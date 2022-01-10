@@ -151,6 +151,7 @@ impl TermInfoStore {
         )
     }
 
+    #[inline]
     pub fn num_terms(&self) -> usize {
         self.num_terms
     }

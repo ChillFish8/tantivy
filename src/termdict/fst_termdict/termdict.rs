@@ -131,6 +131,7 @@ impl TermDictionary {
         TermDictionary::open(EMPTY_TERM_DICT_FILE.clone()).unwrap()
     }
 
+    #[inline]
     /// Returns the number of terms in the dictionary.
     /// Term ordinals range from 0 to `num_terms() - 1`.
     pub fn num_terms(&self) -> usize {

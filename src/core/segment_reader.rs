@@ -10,18 +10,20 @@ use crate::fastfield::AliveBitSet;
 use crate::fastfield::FacetReader;
 use crate::fastfield::FastFieldReaders;
 use crate::fieldnorm::{FieldNormReader, FieldNormReaders};
-use crate::schema::FieldType;
+use crate::schema::{Facet, FieldType};
 use crate::schema::Schema;
 use crate::schema::{Field, IndexRecordOption};
 use crate::space_usage::SegmentSpaceUsage;
 use crate::store::StoreReader;
-use crate::termdict::TermDictionary;
-use crate::DocId;
+use crate::termdict::{TermDictionary, TermStreamer};
+use crate::{DocId, Term};
 use fail::fail_point;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::{collections::HashMap, io};
+use std::path::Path;
+use crate::postings::TermInfo;
 
 /// Entry point to access all of the datastructures of the `Segment`
 ///
@@ -328,6 +330,23 @@ impl SegmentReader {
                 .map(AliveBitSet::space_usage)
                 .unwrap_or(0),
         ))
+    }
+
+    /// All terms contained within the segment.
+    pub fn term_stream(&self, field: Field) -> crate::Result<TermStreamer> {
+        let field_entry = self.schema.get_field_entry(field);
+        let termdict_file: FileSlice = self.termdict_composite.open_read(field)
+            .ok_or_else(||
+               DataCorruption::comment_only(format!(
+                   "Failed to open field {:?}'s term dictionary in the composite file. Has the schema been modified?",
+                   field_entry.name(),
+               ))
+            )?;
+
+        let term_dictionary = TermDictionary::open(termdict_file)?;
+        let mut stream = term_dictionary.stream()?;
+
+        Ok(stream)
     }
 }
 
