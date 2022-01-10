@@ -221,5 +221,14 @@ fn main() -> tantivy::Result<()> {
         println!("{}", schema.to_json(&retrieved_doc));
     }
 
+    for reader in searcher.segment_readers() {
+        let dict = reader.term_dict(title)?;
+        let mut stream = dict.stream()?;
+
+        while let Some((term, info)) = stream.next() {
+            println!("{} - {}", String::from_utf8_lossy(term), info.doc_freq);
+        }
+    }
+
     Ok(())
 }

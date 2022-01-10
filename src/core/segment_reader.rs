@@ -332,8 +332,8 @@ impl SegmentReader {
         ))
     }
 
-    /// All terms contained within the segment.
-    pub fn term_stream(&self, field: Field) -> crate::Result<TermStreamer> {
+    /// Get the TermDictionary for the given field for this segment.
+    pub fn term_dict(&self, field: Field) -> crate::Result<TermDictionary> {
         let field_entry = self.schema.get_field_entry(field);
         let termdict_file: FileSlice = self.termdict_composite.open_read(field)
             .ok_or_else(||
@@ -344,9 +344,8 @@ impl SegmentReader {
             )?;
 
         let term_dictionary = TermDictionary::open(termdict_file)?;
-        let mut stream = term_dictionary.stream()?;
 
-        Ok(stream)
+        Ok(term_dictionary)
     }
 }
 
