@@ -10,20 +10,20 @@ use crate::fastfield::AliveBitSet;
 use crate::fastfield::FacetReader;
 use crate::fastfield::FastFieldReaders;
 use crate::fieldnorm::{FieldNormReader, FieldNormReaders};
-use crate::schema::{Facet, FieldType};
+use crate::schema::{FieldType};
 use crate::schema::Schema;
 use crate::schema::{Field, IndexRecordOption};
 use crate::space_usage::SegmentSpaceUsage;
 use crate::store::StoreReader;
-use crate::termdict::{TermDictionary, TermStreamer};
-use crate::{DocId, Term};
+use crate::termdict::{TermDictionary};
+use crate::{DocId};
 use fail::fail_point;
 use std::fmt;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::{collections::HashMap, io};
-use std::path::Path;
-use crate::postings::TermInfo;
+
+
 
 /// Entry point to access all of the datastructures of the `Segment`
 ///
