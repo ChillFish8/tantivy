@@ -1,5 +1,6 @@
 use super::Collector;
 use crate::collector::SegmentCollector;
+use crate::schema::DocumentAccess;
 use crate::{DocId, Score, SegmentOrdinal, SegmentReader};
 
 /// `CountCollector` collector only counts how many
@@ -35,7 +36,7 @@ use crate::{DocId, Score, SegmentOrdinal, SegmentReader};
 /// ```
 pub struct Count;
 
-impl Collector for Count {
+impl<D: DocumentAccess> Collector<D> for Count {
     type Fruit = usize;
 
     type Child = SegmentCountCollector;
@@ -43,7 +44,7 @@ impl Collector for Count {
     fn for_segment(
         &self,
         _: SegmentOrdinal,
-        _: &SegmentReader,
+        _: &SegmentReader<D>,
     ) -> crate::Result<SegmentCountCollector> {
         Ok(SegmentCountCollector::default())
     }

@@ -25,6 +25,7 @@ use crate::indexer::{
     DefaultMergePolicy, MergeCandidate, MergeOperation, MergePolicy, SegmentEntry,
     SegmentSerializer,
 };
+use crate::schema::DocumentAccess;
 use crate::{FutureResult, Opstamp};
 
 const NUM_MERGE_THREADS: usize = 4;
@@ -63,11 +64,16 @@ pub(crate) fn save_metas(metas: &IndexMeta, directory: &dyn Directory) -> crate:
 //
 // We voluntarily pass a merge_operation ref to guarantee that
 // the merge_operation is alive during the process
-#[derive(Clone)]
-pub(crate) struct SegmentUpdater(Arc<InnerSegmentUpdater>);
+pub(crate) struct SegmentUpdater<D: DocumentAccess>(Arc<InnerSegmentUpdater<D>>);
 
-impl Deref for SegmentUpdater {
-    type Target = InnerSegmentUpdater;
+impl<D: DocumentAccess> Clone for SegmentUpdater<D> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<D: DocumentAccess> Deref for SegmentUpdater<D> {
+    type Target = InnerSegmentUpdater<D>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -75,8 +81,8 @@ impl Deref for SegmentUpdater {
     }
 }
 
-fn garbage_collect_files(
-    segment_updater: SegmentUpdater,
+fn garbage_collect_files<D: DocumentAccess>(
+    segment_updater: SegmentUpdater<D>,
 ) -> crate::Result<GarbageCollectionResult> {
     info!("Running garbage collection");
     let mut index = segment_updater.index.clone();
@@ -87,11 +93,11 @@ fn garbage_collect_files(
 
 /// Merges a list of segments the list of segment givens in the `segment_entries`.
 /// This function happens in the calling thread and is computationally expensive.
-fn merge(
-    index: &Index,
-    mut segment_entries: Vec<SegmentEntry>,
+fn merge<D: DocumentAccess>(
+    index: &Index<D>,
+    mut segment_entries: Vec<SegmentEntry<D>>,
     target_opstamp: Opstamp,
-) -> crate::Result<Option<SegmentEntry>> {
+) -> crate::Result<Option<SegmentEntry<D>>> {
     let num_docs = segment_entries
         .iter()
         .map(|segment| segment.meta().num_docs() as u64)
@@ -111,14 +117,13 @@ fn merge(
 
     let delete_cursor = segment_entries[0].delete_cursor().clone();
 
-    let segments: Vec<Segment> = segment_entries
+    let segments: Vec<Segment<D>> = segment_entries
         .iter()
         .map(|segment_entry| index.segment(segment_entry.meta().clone()))
         .collect();
 
     // An IndexMerger is like a "view" of our merged segments.
-    let merger: IndexMerger =
-        IndexMerger::open(index.schema(), index.settings().clone(), &segments[..])?;
+    let merger = IndexMerger::open(index.schema(), index.settings().clone(), &segments[..])?;
 
     // ... we just serialize this index merger in our new segment to merge the segments.
     let segment_serializer = SegmentSerializer::for_segment(merged_segment.clone(), true)?;
@@ -143,10 +148,10 @@ fn merge(
 /// meant to work if you have an `IndexWriter` running for the origin indices, or
 /// the destination `Index`.
 #[doc(hidden)]
-pub fn merge_indices<T: Into<Box<dyn Directory>>>(
-    indices: &[Index],
+pub fn merge_indices<T: Into<Box<dyn Directory>>, D: DocumentAccess>(
+    indices: &[Index<D>],
     output_directory: T,
-) -> crate::Result<Index> {
+) -> crate::Result<Index<D>> {
     if indices.is_empty() {
         // If there are no indices to merge, there is no need to do anything.
         return Err(crate::TantivyError::InvalidArgument(
@@ -167,7 +172,7 @@ pub fn merge_indices<T: Into<Box<dyn Directory>>>(
         ));
     }
 
-    let mut segments: Vec<Segment> = Vec::new();
+    let mut segments = Vec::new();
     for index in indices {
         segments.extend(index.searchable_segments()?);
     }
@@ -189,12 +194,12 @@ pub fn merge_indices<T: Into<Box<dyn Directory>>>(
 /// meant to work if you have an `IndexWriter` running for the origin indices, or
 /// the destination `Index`.
 #[doc(hidden)]
-pub fn merge_filtered_segments<T: Into<Box<dyn Directory>>>(
-    segments: &[Segment],
+pub fn merge_filtered_segments<T: Into<Box<dyn Directory>>, D: DocumentAccess>(
+    segments: &[Segment<D>],
     target_settings: IndexSettings,
     filter_doc_ids: Vec<Option<AliveBitSet>>,
     output_directory: T,
-) -> crate::Result<Index> {
+) -> crate::Result<Index<D>> {
     if segments.is_empty() {
         // If there are no indices to merge, there is no need to do anything.
         return Err(crate::TantivyError::InvalidArgument(
@@ -222,7 +227,7 @@ pub fn merge_filtered_segments<T: Into<Box<dyn Directory>>>(
     )?;
     let merged_segment = merged_index.new_segment();
     let merged_segment_id = merged_segment.id();
-    let merger: IndexMerger = IndexMerger::open_with_custom_alive_set(
+    let merger = IndexMerger::open_with_custom_alive_set(
         merged_index.schema(),
         merged_index.settings().clone(),
         segments,
@@ -258,7 +263,7 @@ pub fn merge_filtered_segments<T: Into<Box<dyn Directory>>>(
     Ok(merged_index)
 }
 
-pub(crate) struct InnerSegmentUpdater {
+pub(crate) struct InnerSegmentUpdater<D: DocumentAccess> {
     // we keep a copy of the current active IndexMeta to
     // avoid loading the file every time we need it in the
     // `SegmentUpdater`.
@@ -269,20 +274,20 @@ pub(crate) struct InnerSegmentUpdater {
     pool: ThreadPool,
     merge_thread_pool: ThreadPool,
 
-    index: Index,
-    segment_manager: SegmentManager,
+    index: Index<D>,
+    segment_manager: SegmentManager<D>,
     merge_policy: RwLock<Arc<dyn MergePolicy>>,
     killed: AtomicBool,
     stamper: Stamper,
     merge_operations: MergeOperationInventory,
 }
 
-impl SegmentUpdater {
+impl<D: DocumentAccess> SegmentUpdater<D> {
     pub fn create(
-        index: Index,
+        index: Index<D>,
         stamper: Stamper,
-        delete_cursor: &DeleteCursor,
-    ) -> crate::Result<SegmentUpdater> {
+        delete_cursor: &DeleteCursor<D>,
+    ) -> crate::Result<Self> {
         let segments = index.searchable_segment_metas()?;
         let segment_manager = SegmentManager::from_segments(segments, delete_cursor);
         let pool = ThreadPoolBuilder::new()
@@ -304,7 +309,7 @@ impl SegmentUpdater {
                 )
             })?;
         let index_meta = index.load_metas()?;
-        Ok(SegmentUpdater(Arc::new(InnerSegmentUpdater {
+        Ok(Self(Arc::new(InnerSegmentUpdater {
             active_index_meta: RwLock::new(Arc::new(index_meta)),
             pool,
             merge_thread_pool,
@@ -343,7 +348,7 @@ impl SegmentUpdater {
         scheduled_result
     }
 
-    pub fn schedule_add_segment(&self, segment_entry: SegmentEntry) -> FutureResult<()> {
+    pub fn schedule_add_segment(&self, segment_entry: SegmentEntry<D>) -> FutureResult<()> {
         let segment_updater = self.clone();
         self.schedule_task(move || {
             segment_updater.segment_manager.add_segment(segment_entry);
@@ -369,7 +374,7 @@ impl SegmentUpdater {
     ///
     /// The method returns copies of the segment entries,
     /// updated with the delete information.
-    fn purge_deletes(&self, target_opstamp: Opstamp) -> crate::Result<Vec<SegmentEntry>> {
+    fn purge_deletes(&self, target_opstamp: Opstamp) -> crate::Result<Vec<SegmentEntry<D>>> {
         let mut segment_entries = self.segment_manager.segment_entries();
         for segment_entry in &mut segment_entries {
             let segment = self.index.segment(segment_entry.meta().clone());
@@ -441,7 +446,7 @@ impl SegmentUpdater {
         opstamp: Opstamp,
         payload: Option<String>,
     ) -> FutureResult<Opstamp> {
-        let segment_updater: SegmentUpdater = self.clone();
+        let segment_updater = self.clone();
         self.schedule_task(move || {
             let segment_entries = segment_updater.purge_deletes(opstamp)?;
             segment_updater.segment_manager.commit(segment_entries);
@@ -492,7 +497,7 @@ impl SegmentUpdater {
         );
 
         let segment_updater = self.clone();
-        let segment_entries: Vec<SegmentEntry> = match self
+        let segment_entries = match self
             .segment_manager
             .start_merge(merge_operation.segment_ids())
         {
@@ -584,7 +589,7 @@ impl SegmentUpdater {
     fn end_merge(
         &self,
         merge_operation: MergeOperation,
-        mut after_merge_segment_entry: Option<SegmentEntry>,
+        mut after_merge_segment_entry: Option<SegmentEntry<D>>,
     ) -> crate::Result<Option<SegmentMeta>> {
         let segment_updater = self.clone();
         let after_merge_segment_meta = after_merge_segment_entry

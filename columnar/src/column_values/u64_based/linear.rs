@@ -1,6 +1,6 @@
 use std::io;
 
-use common::{BinarySerializable, OwnedBytes};
+use common::{BinaryDeserializable, BinarySerializable, OwnedBytes};
 use tantivy_bitpacker::{compute_num_bits, BitPacker, BitUnpacker};
 
 use super::line::Line;
@@ -61,7 +61,9 @@ impl BinarySerializable for LinearParams {
         self.bit_unpacker.bit_width().serialize(writer)?;
         Ok(())
     }
+}
 
+impl BinaryDeserializable for LinearParams {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let line = Line::deserialize(reader)?;
         let bit_width = u8::deserialize(reader)?;

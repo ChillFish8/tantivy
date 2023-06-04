@@ -10,6 +10,7 @@ use crate::aggregation::intermediate_agg_result::{
     IntermediateAggregationResult, IntermediateAggregationResults, IntermediateMetricResult,
 };
 use crate::aggregation::segment_agg_result::SegmentAggregationCollector;
+use crate::schema::DocumentAccess;
 use crate::{DocId, TantivyError};
 
 /// A multi-value metric aggregation that computes a collection of statistics on numeric values that
@@ -175,10 +176,10 @@ impl SegmentStatsCollector {
         }
     }
     #[inline]
-    pub(crate) fn collect_block_with_field(
+    pub(crate) fn collect_block_with_field<D: DocumentAccess>(
         &mut self,
         docs: &[DocId],
-        agg_accessor: &mut AggregationWithAccessor,
+        agg_accessor: &mut AggregationWithAccessor<D>,
     ) {
         agg_accessor
             .column_block_accessor
@@ -191,11 +192,11 @@ impl SegmentStatsCollector {
     }
 }
 
-impl SegmentAggregationCollector for SegmentStatsCollector {
+impl<D: DocumentAccess> SegmentAggregationCollector<D> for SegmentStatsCollector {
     #[inline]
     fn add_intermediate_aggregation_result(
         self: Box<Self>,
-        agg_with_accessor: &AggregationsWithAccessor,
+        agg_with_accessor: &AggregationsWithAccessor<D>,
         results: &mut IntermediateAggregationResults,
     ) -> crate::Result<()> {
         let name = agg_with_accessor.aggs.keys[self.accessor_idx].to_string();
@@ -231,7 +232,7 @@ impl SegmentAggregationCollector for SegmentStatsCollector {
     fn collect(
         &mut self,
         doc: crate::DocId,
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         let field = &agg_with_accessor.aggs.values[self.accessor_idx].accessor;
 
@@ -247,7 +248,7 @@ impl SegmentAggregationCollector for SegmentStatsCollector {
     fn collect_block(
         &mut self,
         docs: &[crate::DocId],
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         let field = &mut agg_with_accessor.aggs.values[self.accessor_idx];
         self.collect_block_with_field(docs, field);

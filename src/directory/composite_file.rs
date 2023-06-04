@@ -3,7 +3,7 @@ use std::io::{self, Read, Write};
 use std::iter::ExactSizeIterator;
 use std::ops::Range;
 
-use common::{BinarySerializable, CountingWriter, HasLen, VInt};
+use common::{BinaryDeserializable, BinarySerializable, CountingWriter, HasLen, VInt};
 
 use crate::directory::{FileSlice, TerminatingWrite, WritePtr};
 use crate::schema::Field;
@@ -27,7 +27,9 @@ impl BinarySerializable for FileAddr {
         VInt(self.idx as u64).serialize(writer)?;
         Ok(())
     }
+}
 
+impl BinaryDeserializable for FileAddr {
     fn deserialize<R: Read>(reader: &mut R) -> io::Result<Self> {
         let field = Field::deserialize(reader)?;
         let idx = VInt::deserialize(reader)?.0 as usize;
@@ -185,7 +187,7 @@ mod test {
     use std::io::Write;
     use std::path::Path;
 
-    use common::{BinarySerializable, VInt};
+    use common::{BinaryDeserializable, BinarySerializable, VInt};
 
     use super::{CompositeFile, CompositeWrite};
     use crate::directory::{Directory, RamDirectory};

@@ -1,6 +1,6 @@
 use std::io;
 
-use common::{BinarySerializable, VInt};
+use common::{BinaryDeserializable, VInt};
 
 use crate::directory::OwnedBytes;
 use crate::positions::COMPRESSION_BLOCK_SIZE;

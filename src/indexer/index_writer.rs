@@ -20,7 +20,7 @@ use crate::indexer::operation::DeleteOperation;
 use crate::indexer::stamper::Stamper;
 use crate::indexer::{MergePolicy, SegmentEntry, SegmentWriter};
 use crate::query::{EnableScoring, Query, TermQuery};
-use crate::schema::{Document, IndexRecordOption, Term};
+use crate::schema::{Document, DocumentAccess, IndexRecordOption, Term};
 use crate::{FutureResult, Opstamp};
 
 // Size of the margin for the `memory_arena`. A segment is closed when the remaining memory
@@ -50,36 +50,36 @@ fn error_in_index_worker_thread(context: &str) -> TantivyError {
 /// indexing queue.
 /// Each indexing thread builds its own independent [`Segment`], via
 /// a `SegmentWriter` object.
-pub struct IndexWriter {
+pub struct IndexWriter<D: DocumentAccess = Document> {
     // the lock is just used to bind the
     // lifetime of the lock with that of the IndexWriter.
     _directory_lock: Option<DirectoryLock>,
 
-    index: Index,
+    index: Index<D>,
 
     memory_arena_in_bytes_per_thread: usize,
 
     workers_join_handle: Vec<JoinHandle<crate::Result<()>>>,
 
-    index_writer_status: IndexWriterStatus,
-    operation_sender: AddBatchSender,
+    index_writer_status: IndexWriterStatus<D>,
+    operation_sender: AddBatchSender<D>,
 
-    segment_updater: SegmentUpdater,
+    segment_updater: SegmentUpdater<D>,
 
     worker_id: usize,
 
     num_threads: usize,
 
-    delete_queue: DeleteQueue,
+    delete_queue: DeleteQueue<D>,
 
     stamper: Stamper,
     committed_opstamp: Opstamp,
 }
 
-fn compute_deleted_bitset(
+fn compute_deleted_bitset<D: DocumentAccess>(
     alive_bitset: &mut BitSet,
-    segment_reader: &SegmentReader,
-    delete_cursor: &mut DeleteCursor,
+    segment_reader: &SegmentReader<D>,
+    delete_cursor: &mut DeleteCursor<D>,
     doc_opstamps: &DocToOpstampMapping,
     target_opstamp: Opstamp,
 ) -> crate::Result<bool> {
@@ -112,9 +112,9 @@ fn compute_deleted_bitset(
 /// is `==` target_opstamp.
 /// For instance, there was no delete operation between the state of the `segment_entry` and
 /// the `target_opstamp`, `segment_entry` is not updated.
-pub(crate) fn advance_deletes(
-    mut segment: Segment,
-    segment_entry: &mut SegmentEntry,
+pub(crate) fn advance_deletes<D: DocumentAccess>(
+    mut segment: Segment<D>,
+    segment_entry: &mut SegmentEntry<D>,
     target_opstamp: Opstamp,
 ) -> crate::Result<()> {
     if segment_entry.meta().delete_opstamp() == Some(target_opstamp) {
@@ -163,12 +163,12 @@ pub(crate) fn advance_deletes(
     Ok(())
 }
 
-fn index_documents(
+fn index_documents<D: DocumentAccess>(
     memory_budget: usize,
-    segment: Segment,
-    grouped_document_iterator: &mut dyn Iterator<Item = AddBatch>,
-    segment_updater: &mut SegmentUpdater,
-    mut delete_cursor: DeleteCursor,
+    segment: Segment<D>,
+    grouped_document_iterator: &mut dyn Iterator<Item = AddBatch<D>>,
+    segment_updater: &mut SegmentUpdater<D>,
+    mut delete_cursor: DeleteCursor<D>,
 ) -> crate::Result<()> {
     let mut segment_writer = SegmentWriter::for_segment(memory_budget, segment.clone())?;
     for document_group in grouped_document_iterator {
@@ -210,9 +210,9 @@ fn index_documents(
 }
 
 /// `doc_opstamps` is required to be non-empty.
-fn apply_deletes(
-    segment: &Segment,
-    delete_cursor: &mut DeleteCursor,
+fn apply_deletes<D: DocumentAccess>(
+    segment: &Segment<D>,
+    delete_cursor: &mut DeleteCursor<D>,
     doc_opstamps: &[Opstamp],
 ) -> crate::Result<Option<BitSet>> {
     if delete_cursor.get().is_none() {
@@ -246,7 +246,9 @@ fn apply_deletes(
     })
 }
 
-impl IndexWriter {
+impl<D> IndexWriter<D>
+where D: DocumentAccess
+{
     /// Create a new index writer. Attempts to acquire a lockfile.
     ///
     /// The lockfile should be deleted on drop, but it is possible
@@ -262,11 +264,11 @@ impl IndexWriter {
     /// If the memory arena per thread is too small or too big, returns
     /// `TantivyError::InvalidArgument`
     pub(crate) fn new(
-        index: &Index,
+        index: &Index<D>,
         num_threads: usize,
         memory_arena_in_bytes_per_thread: usize,
         directory_lock: DirectoryLock,
-    ) -> crate::Result<IndexWriter> {
+    ) -> crate::Result<Self> {
         if memory_arena_in_bytes_per_thread < MEMORY_ARENA_NUM_BYTES_MIN {
             let err_msg = format!(
                 "The memory arena in bytes per thread needs to be at least \
@@ -280,10 +282,10 @@ impl IndexWriter {
             );
             return Err(TantivyError::InvalidArgument(err_msg));
         }
-        let (document_sender, document_receiver): (AddBatchSender, AddBatchReceiver) =
+        let (document_sender, document_receiver): (AddBatchSender<D>, AddBatchReceiver<D>) =
             crossbeam_channel::bounded(PIPELINE_MAX_SIZE_IN_DOCS);
 
-        let delete_queue = DeleteQueue::new();
+        let delete_queue: DeleteQueue<D> = DeleteQueue::new();
 
         let current_opstamp = index.load_metas()?.opstamp;
 
@@ -292,7 +294,7 @@ impl IndexWriter {
         let segment_updater =
             SegmentUpdater::create(index.clone(), stamper.clone(), &delete_queue.cursor())?;
 
-        let mut index_writer = IndexWriter {
+        let mut index_writer = Self {
             _directory_lock: Some(directory_lock),
 
             memory_arena_in_bytes_per_thread,
@@ -322,7 +324,7 @@ impl IndexWriter {
     }
 
     /// Accessor to the index.
-    pub fn index(&self) -> &Index {
+    pub fn index(&self) -> &Index<D> {
         &self.index
     }
 
@@ -370,11 +372,11 @@ impl IndexWriter {
     /// It is safe to start writing file associated with the new `Segment`.
     /// These will not be garbage collected as long as an instance object of
     /// `SegmentMeta` object associated with the new `Segment` is "alive".
-    pub fn new_segment(&self) -> Segment {
+    pub fn new_segment(&self) -> Segment<D> {
         self.index.new_segment()
     }
 
-    fn operation_receiver(&self) -> crate::Result<AddBatchReceiver> {
+    fn operation_receiver(&self) -> crate::Result<AddBatchReceiver<D>> {
         self.index_writer_status
             .operation_receiver()
             .ok_or_else(|| {
@@ -524,7 +526,7 @@ impl IndexWriter {
     ///
     /// Returns the former segment_ready channel.
     fn recreate_document_channel(&mut self) {
-        let (document_sender, document_receiver): (AddBatchSender, AddBatchReceiver) =
+        let (document_sender, document_receiver): (AddBatchSender<D>, AddBatchReceiver<D>) =
             crossbeam_channel::bounded(PIPELINE_MAX_SIZE_IN_DOCS);
         self.operation_sender = document_sender;
         self.index_writer_status = IndexWriterStatus::from(document_receiver);
@@ -551,7 +553,7 @@ impl IndexWriter {
             .take()
             .expect("The IndexWriter does not have any lock. This is a bug, please report.");
 
-        let new_index_writer: IndexWriter = IndexWriter::new(
+        let new_index_writer = IndexWriter::new(
             &self.index,
             self.num_threads,
             self.memory_arena_in_bytes_per_thread,
@@ -597,7 +599,7 @@ impl IndexWriter {
     /// It is also possible to add a payload to the `commit`
     /// using this API.
     /// See [`PreparedCommit::set_payload()`].
-    pub fn prepare_commit(&mut self) -> crate::Result<PreparedCommit> {
+    pub fn prepare_commit(&mut self) -> crate::Result<PreparedCommit<D>> {
         // Here, because we join all of the worker threads,
         // all of the segment update for this commit have been
         // sent.
@@ -647,7 +649,7 @@ impl IndexWriter {
         self.prepare_commit()?.commit()
     }
 
-    pub(crate) fn segment_updater(&self) -> &SegmentUpdater {
+    pub(crate) fn segment_updater(&self) -> &SegmentUpdater<D> {
         &self.segment_updater
     }
 
@@ -677,7 +679,7 @@ impl IndexWriter {
     /// Like adds, the deletion itself will be visible
     /// only after calling `commit()`.
     #[doc(hidden)]
-    pub fn delete_query(&self, query: Box<dyn Query>) -> crate::Result<Opstamp> {
+    pub fn delete_query(&self, query: Box<dyn Query<D>>) -> crate::Result<Opstamp> {
         let weight = query.weight(EnableScoring::disabled_from_schema(&self.index.schema()))?;
         let opstamp = self.stamper.stamp();
         let delete_operation = DeleteOperation {
@@ -706,7 +708,7 @@ impl IndexWriter {
     /// The opstamp is an increasing `u64` that can
     /// be used by the client to align commits with its own
     /// document queue.
-    pub fn add_document(&self, document: Document) -> crate::Result<Opstamp> {
+    pub fn add_document(&self, document: D) -> crate::Result<Opstamp> {
         let opstamp = self.stamper.stamp();
         self.send_add_documents_batch(smallvec![AddOperation { opstamp, document }])?;
         Ok(opstamp)
@@ -743,7 +745,7 @@ impl IndexWriter {
     /// visible to readers only after calling `commit()`.
     pub fn run<I>(&self, user_operations: I) -> crate::Result<Opstamp>
     where
-        I: IntoIterator<Item = UserOperation>,
+        I: IntoIterator<Item = UserOperation<D>>,
         I::IntoIter: ExactSizeIterator,
     {
         let user_operations_it = user_operations.into_iter();
@@ -753,7 +755,7 @@ impl IndexWriter {
         }
         let (batch_opstamp, stamps) = self.get_batch_opstamps(count);
 
-        let mut adds = AddBatch::default();
+        let mut adds = AddBatch::<D>::default();
 
         for (user_op, opstamp) in user_operations_it.zip(stamps) {
             match user_op {
@@ -777,7 +779,7 @@ impl IndexWriter {
         Ok(batch_opstamp)
     }
 
-    fn send_add_documents_batch(&self, add_ops: AddBatch) -> crate::Result<()> {
+    fn send_add_documents_batch(&self, add_ops: AddBatch<D>) -> crate::Result<()> {
         if self.index_writer_status.is_alive() && self.operation_sender.send(add_ops).is_ok() {
             Ok(())
         } else {
@@ -786,7 +788,7 @@ impl IndexWriter {
     }
 }
 
-impl Drop for IndexWriter {
+impl<D: DocumentAccess> Drop for IndexWriter<D> {
     fn drop(&mut self) {
         self.segment_updater.kill();
         self.drop_sender();
@@ -813,8 +815,8 @@ mod tests {
     use crate::indexer::NoMergePolicy;
     use crate::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
     use crate::schema::{
-        self, Facet, FacetOptions, IndexRecordOption, IpAddrOptions, NumericOptions, Schema,
-        TextFieldIndexing, TextOptions, FAST, INDEXED, STORED, STRING, TEXT,
+        self, DocValue, Facet, FacetOptions, IndexRecordOption, IpAddrOptions, NumericOptions,
+        Schema, TextFieldIndexing, TextOptions, FAST, INDEXED, STORED, STRING, TEXT,
     };
     use crate::store::DOCSTORE_CACHE_CAPACITY;
     use crate::{

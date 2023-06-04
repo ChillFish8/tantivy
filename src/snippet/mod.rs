@@ -1,11 +1,12 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::marker::PhantomData;
 use std::ops::Range;
 
 use htmlescape::encode_minimal;
 
 use crate::query::Query;
-use crate::schema::{Field, Value};
+use crate::schema::{DocValue, DocumentAccess, Field};
 use crate::tokenizer::{TextAnalyzer, Token};
 use crate::{Document, Score, Searcher, Term};
 
@@ -288,14 +289,15 @@ fn is_sorted(mut it: impl Iterator<Item = usize>) -> bool {
 /// #    Ok(())
 /// # }
 /// ```
-pub struct SnippetGenerator {
+pub struct SnippetGenerator<D = Document> {
     terms_text: BTreeMap<String, Score>,
     tokenizer: TextAnalyzer,
     field: Field,
     max_num_chars: usize,
+    _phantom: PhantomData<D>,
 }
 
-impl SnippetGenerator {
+impl<D: DocumentAccess> SnippetGenerator<D> {
     /// Creates a new snippet generator
     pub fn new(
         terms_text: BTreeMap<String, Score>,
@@ -303,19 +305,16 @@ impl SnippetGenerator {
         field: Field,
         max_num_chars: usize,
     ) -> Self {
-        SnippetGenerator {
+        Self {
             terms_text,
             tokenizer,
             field,
             max_num_chars,
+            _phantom: PhantomData,
         }
     }
     /// Creates a new snippet generator
-    pub fn create(
-        searcher: &Searcher,
-        query: &dyn Query,
-        field: Field,
-    ) -> crate::Result<SnippetGenerator> {
+    pub fn create(searcher: &Searcher, query: &dyn Query, field: Field) -> crate::Result<Self> {
         let mut terms: BTreeSet<&Term> = BTreeSet::new();
         query.query_terms(&mut |term, _| {
             if term.field() == field {
@@ -337,11 +336,12 @@ impl SnippetGenerator {
             }
         }
         let tokenizer = searcher.index().tokenizer_for_field(field)?;
-        Ok(SnippetGenerator {
+        Ok(Self {
             terms_text,
             tokenizer,
             field,
             max_num_chars: DEFAULT_MAX_NUM_CHARS,
+            _phantom: PhantomData,
         })
     }
 
@@ -359,10 +359,11 @@ impl SnippetGenerator {
     ///
     /// This method extract the text associated with the `SnippetGenerator`'s field
     /// and computes a snippet.
-    pub fn snippet_from_doc(&self, doc: &Document) -> Snippet {
+    pub fn snippet_from_doc(&self, doc: &D) -> Snippet {
         let text: String = doc
-            .get_all(self.field)
-            .flat_map(Value::as_text)
+            .iter_fields_and_values()
+            .filter(|(field, _)| *field == self.field)
+            .flat_map(|(_, v)| v.as_str())
             .collect::<Vec<&str>>()
             .join(" ");
         self.snippet(&text)

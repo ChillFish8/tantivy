@@ -107,6 +107,7 @@ pub use self::tweak_score_top_collector::{ScoreSegmentTweaker, ScoreTweaker};
 mod facet_collector;
 pub use self::facet_collector::{FacetCollector, FacetCounts};
 use crate::query::Weight;
+use crate::schema::DocumentAccess;
 
 mod docset_collector;
 pub use self::docset_collector::DocSetCollector;
@@ -136,7 +137,7 @@ impl<T> Fruit for T where T: Send + downcast_rs::Downcast {}
 /// The collection logic itself is in the `SegmentCollector`.
 ///
 /// Segments are not guaranteed to be visited in any specific order.
-pub trait Collector: Sync + Send {
+pub trait Collector<D: DocumentAccess>: Sync + Send {
     /// `Fruit` is the type for the result of our collection.
     /// e.g. `usize` for the `Count` collector.
     type Fruit: Fruit;
@@ -149,7 +150,7 @@ pub trait Collector: Sync + Send {
     fn for_segment(
         &self,
         segment_local_id: SegmentOrdinal,
-        segment: &SegmentReader,
+        segment: &SegmentReader<D>,
     ) -> crate::Result<Self::Child>;
 
     /// Returns true iff the collector requires to compute scores for documents.
@@ -165,9 +166,9 @@ pub trait Collector: Sync + Send {
     /// Created a segment collector and
     fn collect_segment(
         &self,
-        weight: &dyn Weight,
+        weight: &dyn Weight<D>,
         segment_ord: u32,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
     ) -> crate::Result<<Self::Child as SegmentCollector>::Fruit> {
         let mut segment_collector = self.for_segment(segment_ord, reader)?;
 
@@ -218,15 +219,15 @@ impl<TSegmentCollector: SegmentCollector> SegmentCollector for Option<TSegmentCo
     }
 }
 
-impl<TCollector: Collector> Collector for Option<TCollector> {
+impl<D: DocumentAccess, TCollector: Collector<D>> Collector<D> for Option<TCollector> {
     type Fruit = Option<TCollector::Fruit>;
 
-    type Child = Option<<TCollector as Collector>::Child>;
+    type Child = Option<<TCollector as Collector<D>>::Child>;
 
     fn for_segment(
         &self,
         segment_local_id: SegmentOrdinal,
-        segment: &SegmentReader,
+        segment: &SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         Ok(if let Some(inner) = self {
             let inner_segment_collector = inner.for_segment(segment_local_id, segment)?;
@@ -286,10 +287,11 @@ pub trait SegmentCollector: 'static {
 // -----------------------------------------------
 // Tuple implementations.
 
-impl<Left, Right> Collector for (Left, Right)
+impl<D, Left, Right> Collector<D> for (Left, Right)
 where
-    Left: Collector,
-    Right: Collector,
+    D: DocumentAccess,
+    Left: Collector<D>,
+    Right: Collector<D>,
 {
     type Fruit = (Left::Fruit, Right::Fruit);
     type Child = (Left::Child, Right::Child);
@@ -297,7 +299,7 @@ where
     fn for_segment(
         &self,
         segment_local_id: u32,
-        segment: &SegmentReader,
+        segment: &SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         let left = self.0.for_segment(segment_local_id, segment)?;
         let right = self.1.for_segment(segment_local_id, segment)?;
@@ -344,11 +346,12 @@ where
 
 // 3-Tuple
 
-impl<One, Two, Three> Collector for (One, Two, Three)
+impl<D, One, Two, Three> Collector<D> for (One, Two, Three)
 where
-    One: Collector,
-    Two: Collector,
-    Three: Collector,
+    D: DocumentAccess,
+    One: Collector<D>,
+    Two: Collector<D>,
+    Three: Collector<D>,
 {
     type Fruit = (One::Fruit, Two::Fruit, Three::Fruit);
     type Child = (One::Child, Two::Child, Three::Child);
@@ -356,7 +359,7 @@ where
     fn for_segment(
         &self,
         segment_local_id: u32,
-        segment: &SegmentReader,
+        segment: &SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         let one = self.0.for_segment(segment_local_id, segment)?;
         let two = self.1.for_segment(segment_local_id, segment)?;
@@ -409,12 +412,13 @@ where
 
 // 4-Tuple
 
-impl<One, Two, Three, Four> Collector for (One, Two, Three, Four)
+impl<D, One, Two, Three, Four> Collector<D> for (One, Two, Three, Four)
 where
-    One: Collector,
-    Two: Collector,
-    Three: Collector,
-    Four: Collector,
+    D: DocumentAccess,
+    One: Collector<D>,
+    Two: Collector<D>,
+    Three: Collector<D>,
+    Four: Collector<D>,
 {
     type Fruit = (One::Fruit, Two::Fruit, Three::Fruit, Four::Fruit);
     type Child = (One::Child, Two::Child, Three::Child, Four::Child);
@@ -422,7 +426,7 @@ where
     fn for_segment(
         &self,
         segment_local_id: u32,
-        segment: &SegmentReader,
+        segment: &SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         let one = self.0.for_segment(segment_local_id, segment)?;
         let two = self.1.for_segment(segment_local_id, segment)?;

@@ -1,20 +1,18 @@
 use crate::collector::top_collector::{TopCollector, TopSegmentCollector};
 use crate::collector::{Collector, SegmentCollector};
-use crate::{DocAddress, DocId, Result, Score, SegmentReader};
+use crate::schema::DocumentAccess;
+use crate::{DocAddress, DocId, Document, Result, Score, SegmentReader};
 
-pub(crate) struct TweakedScoreTopCollector<TScoreTweaker, TScore = Score> {
+pub(crate) struct TweakedScoreTopCollector<D, TScoreTweaker, TScore = Score> {
     score_tweaker: TScoreTweaker,
-    collector: TopCollector<TScore>,
+    collector: TopCollector<D, TScore>,
 }
 
-impl<TScoreTweaker, TScore> TweakedScoreTopCollector<TScoreTweaker, TScore>
+impl<D, TScoreTweaker, TScore> TweakedScoreTopCollector<D, TScoreTweaker, TScore>
 where TScore: Clone + PartialOrd
 {
-    pub fn new(
-        score_tweaker: TScoreTweaker,
-        collector: TopCollector<TScore>,
-    ) -> TweakedScoreTopCollector<TScoreTweaker, TScore> {
-        TweakedScoreTopCollector {
+    pub fn new(score_tweaker: TScoreTweaker, collector: TopCollector<D, TScore>) -> Self {
+        Self {
             score_tweaker,
             collector,
         }
@@ -36,18 +34,19 @@ pub trait ScoreSegmentTweaker<TScore>: 'static {
 /// The `ScoreTweaker` itself does not make much of the computation itself.
 /// Instead, it helps constructing `Self::Child` instances that will compute
 /// the score at a segment scale.
-pub trait ScoreTweaker<TScore>: Sync {
+pub trait ScoreTweaker<TScore, D = Document>: Sync {
     /// Type of the associated [`ScoreSegmentTweaker`].
     type Child: ScoreSegmentTweaker<TScore>;
 
     /// Builds a child tweaker for a specific segment. The child scorer is associated with
     /// a specific segment.
-    fn segment_tweaker(&self, segment_reader: &SegmentReader) -> Result<Self::Child>;
+    fn segment_tweaker(&self, segment_reader: &SegmentReader<D>) -> Result<Self::Child>;
 }
 
-impl<TScoreTweaker, TScore> Collector for TweakedScoreTopCollector<TScoreTweaker, TScore>
+impl<D, TScoreTweaker, TScore> Collector<D> for TweakedScoreTopCollector<D, TScoreTweaker, TScore>
 where
-    TScoreTweaker: ScoreTweaker<TScore> + Send + Sync,
+    D: DocumentAccess,
+    TScoreTweaker: ScoreTweaker<TScore, D> + Send + Sync,
     TScore: 'static + PartialOrd + Clone + Send + Sync,
 {
     type Fruit = Vec<(TScore, DocAddress)>;
@@ -57,7 +56,7 @@ where
     fn for_segment(
         &self,
         segment_local_id: u32,
-        segment_reader: &SegmentReader,
+        segment_reader: &SegmentReader<D>,
     ) -> Result<Self::Child> {
         let segment_scorer = self.score_tweaker.segment_tweaker(segment_reader)?;
         let segment_collector = self.collector.for_segment(segment_local_id, segment_reader);
@@ -103,14 +102,15 @@ where
     }
 }
 
-impl<F, TScore, TSegmentScoreTweaker> ScoreTweaker<TScore> for F
+impl<D, F, TScore, TSegmentScoreTweaker> ScoreTweaker<TScore, D> for F
 where
-    F: 'static + Send + Sync + Fn(&SegmentReader) -> TSegmentScoreTweaker,
+    D: DocumentAccess,
+    F: 'static + Send + Sync + Fn(&SegmentReader<D>) -> TSegmentScoreTweaker,
     TSegmentScoreTweaker: ScoreSegmentTweaker<TScore>,
 {
     type Child = TSegmentScoreTweaker;
 
-    fn segment_tweaker(&self, segment_reader: &SegmentReader) -> Result<Self::Child> {
+    fn segment_tweaker(&self, segment_reader: &SegmentReader<D>) -> Result<Self::Child> {
         Ok((self)(segment_reader))
     }
 }

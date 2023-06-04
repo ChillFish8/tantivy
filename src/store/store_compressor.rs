@@ -1,26 +1,27 @@
 use std::io::Write;
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::mpsc::{sync_channel, SyncSender};
 use std::thread::JoinHandle;
 use std::{io, thread};
 
 use common::{BinarySerializable, CountingWriter, TerminatingWrite};
 
 use crate::directory::WritePtr;
+use crate::schema::DocumentAccess;
 use crate::store::footer::DocStoreFooter;
 use crate::store::index::{Checkpoint, SkipIndexBuilder};
 use crate::store::{Compressor, Decompressor, StoreReader};
-use crate::DocId;
+use crate::{DocId, Document};
 
-pub struct BlockCompressor(BlockCompressorVariants);
+pub struct BlockCompressor<D: DocumentAccess = Document>(BlockCompressorVariants<D>);
 
 // The struct wrapping an enum is just here to keep the
 // impls private.
-enum BlockCompressorVariants {
+enum BlockCompressorVariants<D: DocumentAccess> {
     SameThread(BlockCompressorImpl),
-    DedicatedThread(DedicatedThreadBlockCompressorImpl),
+    DedicatedThread(DedicatedThreadBlockCompressorImpl<D>),
 }
 
-impl BlockCompressor {
+impl<D: DocumentAccess> BlockCompressor<D> {
     pub fn new(compressor: Compressor, wrt: WritePtr, dedicated_thread: bool) -> io::Result<Self> {
         let block_compressor_impl = BlockCompressorImpl::new(compressor, wrt);
         if dedicated_thread {
@@ -53,7 +54,7 @@ impl BlockCompressor {
         Ok(())
     }
 
-    pub fn stack_reader(&mut self, store_reader: StoreReader) -> io::Result<()> {
+    pub fn stack_reader(&mut self, store_reader: StoreReader<D>) -> io::Result<()> {
         match &mut self.0 {
             BlockCompressorVariants::SameThread(block_compressor) => {
                 block_compressor.stack(store_reader)?;
@@ -121,7 +122,7 @@ impl BlockCompressorImpl {
     /// This method is an optimization compared to iterating over the documents
     /// in the store and adding them one by one, as the store's data will
     /// not be decompressed and then recompressed.
-    fn stack(&mut self, store_reader: StoreReader) -> io::Result<()> {
+    fn stack<D: DocumentAccess>(&mut self, store_reader: StoreReader<D>) -> io::Result<()> {
         let doc_shift = self.first_doc_in_block;
         let start_shift = self.writer.written_bytes() as usize;
 
@@ -152,25 +153,22 @@ impl BlockCompressorImpl {
 }
 
 // ---------------------------------
-enum BlockCompressorMessage {
+enum BlockCompressorMessage<D: DocumentAccess> {
     CompressBlockAndWrite {
         block_data: Vec<u8>,
         num_docs_in_block: u32,
     },
-    Stack(StoreReader),
+    Stack(StoreReader<D>),
 }
 
-struct DedicatedThreadBlockCompressorImpl {
+struct DedicatedThreadBlockCompressorImpl<D: DocumentAccess> {
     join_handle: Option<JoinHandle<io::Result<()>>>,
-    tx: SyncSender<BlockCompressorMessage>,
+    tx: SyncSender<BlockCompressorMessage<D>>,
 }
 
-impl DedicatedThreadBlockCompressorImpl {
+impl<D: DocumentAccess> DedicatedThreadBlockCompressorImpl<D> {
     fn new(mut block_compressor: BlockCompressorImpl) -> io::Result<Self> {
-        let (tx, rx): (
-            SyncSender<BlockCompressorMessage>,
-            Receiver<BlockCompressorMessage>,
-        ) = sync_channel(3);
+        let (tx, rx) = sync_channel(3);
         let join_handle = thread::Builder::new()
             .name("docstore-compressor-thread".to_string())
             .spawn(move || {
@@ -204,11 +202,11 @@ impl DedicatedThreadBlockCompressorImpl {
         })
     }
 
-    fn stack_reader(&mut self, store_reader: StoreReader) -> io::Result<()> {
+    fn stack_reader(&mut self, store_reader: StoreReader<D>) -> io::Result<()> {
         self.send(BlockCompressorMessage::Stack(store_reader))
     }
 
-    fn send(&mut self, msg: BlockCompressorMessage) -> io::Result<()> {
+    fn send(&mut self, msg: BlockCompressorMessage<D>) -> io::Result<()> {
         if self.tx.send(msg).is_err() {
             harvest_thread_result(self.join_handle.take())?;
             return Err(io::Error::new(io::ErrorKind::Other, "Unidentified error."));

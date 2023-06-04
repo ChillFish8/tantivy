@@ -1,11 +1,12 @@
 use std::io;
 use std::iter::Sum;
+use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::ops::{AddAssign, Range};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use common::{BinarySerializable, OwnedBytes};
+use common::{BinaryDeserializable, OwnedBytes};
 use lru::LruCache;
 
 use super::footer::DocStoreFooter;
@@ -14,7 +15,7 @@ use super::Decompressor;
 use crate::directory::FileSlice;
 use crate::error::DataCorruption;
 use crate::fastfield::AliveBitSet;
-use crate::schema::Document;
+use crate::schema::{document, Document, DocumentAccess};
 use crate::space_usage::StoreSpaceUsage;
 use crate::store::index::Checkpoint;
 use crate::DocId;
@@ -24,12 +25,13 @@ pub(crate) const DOCSTORE_CACHE_CAPACITY: usize = 100;
 type Block = OwnedBytes;
 
 /// Reads document off tantivy's [`Store`](./index.html)
-pub struct StoreReader {
+pub struct StoreReader<D = Document> {
     decompressor: Decompressor,
     data: FileSlice,
     skip_index: Arc<SkipIndex>,
     space_usage: StoreSpaceUsage,
     cache: BlockCache,
+    phantom: PhantomData<D>,
 }
 
 /// The cache for decompressed blocks.
@@ -112,12 +114,14 @@ impl Sum for CacheStats {
     }
 }
 
-impl StoreReader {
+impl<D> StoreReader<D>
+where D: DocumentAccess
+{
     /// Opens a store reader
     ///
     /// `cache_num_blocks` sets the number of decompressed blocks to be cached in an LRU.
     /// The size of blocks is configurable, this should be reflexted in the
-    pub fn open(store_file: FileSlice, cache_num_blocks: usize) -> io::Result<StoreReader> {
+    pub fn open(store_file: FileSlice, cache_num_blocks: usize) -> io::Result<StoreReader<D>> {
         let (footer, data_and_offset) = DocStoreFooter::extract_footer(store_file)?;
 
         let (data_file, offset_index_file) = data_and_offset.split(footer.offset as usize);
@@ -136,6 +140,7 @@ impl StoreReader {
             },
             skip_index: Arc::new(skip_index),
             space_usage,
+            phantom: PhantomData,
         })
     }
 
@@ -198,9 +203,10 @@ impl StoreReader {
     ///
     /// It should not be called to score documents
     /// for instance.
-    pub fn get(&self, doc_id: DocId) -> crate::Result<Document> {
+    pub fn get(&self, doc_id: DocId) -> crate::Result<D> {
         let mut doc_bytes = self.get_document_bytes(doc_id)?;
-        Ok(Document::deserialize(&mut doc_bytes)?)
+        document::doc_binary_wrappers::deserialize(&mut doc_bytes)
+            .map_err(crate::TantivyError::from)
     }
 
     /// Returns raw bytes of a given document.
@@ -235,10 +241,11 @@ impl StoreReader {
     pub fn iter<'a: 'b, 'b>(
         &'b self,
         alive_bitset: Option<&'a AliveBitSet>,
-    ) -> impl Iterator<Item = crate::Result<Document>> + 'b {
+    ) -> impl Iterator<Item = crate::Result<D>> + 'b {
         self.iter_raw(alive_bitset).map(|doc_bytes_res| {
             let mut doc_bytes = doc_bytes_res?;
-            Ok(Document::deserialize(&mut doc_bytes)?)
+            document::doc_binary_wrappers::deserialize(&mut doc_bytes)
+                .map_err(crate::TantivyError::from)
         })
     }
 
@@ -292,7 +299,7 @@ impl StoreReader {
                         )
                     })?
                     .map_err(|error_kind| {
-                        std::io::Error::new(error_kind, "error when reading block in doc store")
+                        io::Error::new(error_kind, "error when reading block in doc store")
                     })?;
 
                 let range = block_read_index(&block, doc_pos)?;
@@ -366,7 +373,8 @@ impl StoreReader {
     /// Fetches a document asynchronously. Async version of [`get`](Self::get).
     pub async fn get_async(&self, doc_id: DocId) -> crate::Result<Document> {
         let mut doc_bytes = self.get_document_bytes_async(doc_id).await?;
-        Ok(Document::deserialize(&mut doc_bytes)?)
+        document::doc_binary_wrappers::deserialize(&mut doc_bytes)
+            .map_err(crate::TantivyError::from)
     }
 }
 
@@ -376,7 +384,7 @@ mod tests {
 
     use super::*;
     use crate::directory::RamDirectory;
-    use crate::schema::{Document, Field};
+    use crate::schema::{DocValue, Document, Field};
     use crate::store::tests::write_lorem_ipsum_store;
     use crate::store::Compressor;
     use crate::Directory;
@@ -384,7 +392,7 @@ mod tests {
     const BLOCK_SIZE: usize = 16_384;
 
     fn get_text_field<'a>(doc: &'a Document, field: &'a Field) -> Option<&'a str> {
-        doc.get_first(*field).and_then(|f| f.as_text())
+        doc.get_first(*field).and_then(|f| f.as_str())
     }
 
     #[test]

@@ -1,5 +1,7 @@
 //! This will enhance the request tree with access to the fastfield and metadata.
 
+use std::marker::PhantomData;
+
 use columnar::{Column, ColumnBlockAccessor, ColumnType, StrColumn};
 
 use super::agg_limits::ResourceLimitGuard;
@@ -13,15 +15,16 @@ use super::metric::{
 };
 use super::segment_agg_result::AggregationLimits;
 use super::VecWithNames;
-use crate::SegmentReader;
+use crate::schema::DocumentAccess;
+use crate::{Document, SegmentReader};
 
 #[derive(Default)]
-pub(crate) struct AggregationsWithAccessor {
-    pub aggs: VecWithNames<AggregationWithAccessor>,
+pub(crate) struct AggregationsWithAccessor<D: DocumentAccess> {
+    pub aggs: VecWithNames<AggregationWithAccessor<D>>,
 }
 
-impl AggregationsWithAccessor {
-    fn from_data(aggs: VecWithNames<AggregationWithAccessor>) -> Self {
+impl<D: DocumentAccess> AggregationsWithAccessor<D> {
+    fn from_data(aggs: VecWithNames<AggregationWithAccessor<D>>) -> Self {
         Self { aggs }
     }
 
@@ -30,7 +33,7 @@ impl AggregationsWithAccessor {
     }
 }
 
-pub struct AggregationWithAccessor {
+pub struct AggregationWithAccessor<D: DocumentAccess = Document> {
     /// In general there can be buckets without fast field access, e.g. buckets that are created
     /// based on search terms. That is not that case currently, but eventually this needs to be
     /// Option or moved.
@@ -40,19 +43,20 @@ pub struct AggregationWithAccessor {
     /// In case there are multiple types of fast fields, e.g. string and numeric.
     /// Only used for term aggregations currently.
     pub(crate) accessor2: Option<(Column<u64>, ColumnType)>,
-    pub(crate) sub_aggregation: AggregationsWithAccessor,
+    pub(crate) sub_aggregation: AggregationsWithAccessor<D>,
     pub(crate) limits: ResourceLimitGuard,
     pub(crate) column_block_accessor: ColumnBlockAccessor<u64>,
     pub(crate) agg: Aggregation,
+    _phantom: PhantomData<D>,
 }
 
-impl AggregationWithAccessor {
+impl<D: DocumentAccess> AggregationWithAccessor<D> {
     fn try_from_agg(
         agg: &Aggregation,
         sub_aggregation: &Aggregations,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         limits: AggregationLimits,
-    ) -> crate::Result<AggregationWithAccessor> {
+    ) -> crate::Result<Self> {
         let mut str_dict_column = None;
         let mut accessor2 = None;
         use AggregationVariants::*;
@@ -108,7 +112,7 @@ impl AggregationWithAccessor {
         };
 
         let sub_aggregation = sub_aggregation.clone();
-        Ok(AggregationWithAccessor {
+        Ok(Self {
             accessor,
             accessor2,
             field_type,
@@ -121,6 +125,7 @@ impl AggregationWithAccessor {
             str_dict_column,
             limits: limits.new_guard(),
             column_block_accessor: Default::default(),
+            _phantom: PhantomData,
         })
     }
 }
@@ -134,11 +139,14 @@ fn get_numeric_or_date_column_types() -> &'static [ColumnType] {
     ]
 }
 
-pub(crate) fn get_aggs_with_segment_accessor_and_validate(
+pub(crate) fn get_aggs_with_segment_accessor_and_validate<D>(
     aggs: &Aggregations,
-    reader: &SegmentReader,
+    reader: &SegmentReader<D>,
     limits: &AggregationLimits,
-) -> crate::Result<AggregationsWithAccessor> {
+) -> crate::Result<AggregationsWithAccessor<D>>
+where
+    D: DocumentAccess,
+{
     let mut aggss = Vec::new();
     for (key, agg) in aggs.iter() {
         aggss.push((
@@ -157,8 +165,8 @@ pub(crate) fn get_aggs_with_segment_accessor_and_validate(
 }
 
 /// Get fast field reader or empty as default.
-fn get_ff_reader(
-    reader: &SegmentReader,
+fn get_ff_reader<D: DocumentAccess>(
+    reader: &SegmentReader<D>,
     field_name: &str,
     allowed_column_types: Option<&[ColumnType]>,
 ) -> crate::Result<(columnar::Column<u64>, ColumnType)> {
@@ -177,8 +185,8 @@ fn get_ff_reader(
 /// Get all fast field reader or empty as default.
 ///
 /// Is guaranteed to return at least one column.
-fn get_all_ff_reader(
-    reader: &SegmentReader,
+fn get_all_ff_reader<D: DocumentAccess>(
+    reader: &SegmentReader<D>,
     field_name: &str,
     allowed_column_types: Option<&[ColumnType]>,
 ) -> crate::Result<Vec<(columnar::Column<u64>, ColumnType)>> {

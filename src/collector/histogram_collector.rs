@@ -5,7 +5,7 @@ use fastdivide::DividerU64;
 
 use crate::collector::{Collector, SegmentCollector};
 use crate::fastfield::{FastFieldNotAvailableError, FastValue};
-use crate::schema::Type;
+use crate::schema::{DocumentAccess, Type};
 use crate::{DocId, Score};
 
 /// Histogram builds an histogram of the values of a fastfield for the
@@ -103,14 +103,14 @@ impl SegmentCollector for SegmentHistogramCollector {
     }
 }
 
-impl Collector for HistogramCollector {
+impl<D: DocumentAccess> Collector<D> for HistogramCollector {
     type Fruit = Vec<u64>;
     type Child = SegmentHistogramCollector;
 
     fn for_segment(
         &self,
         _segment_local_id: crate::SegmentOrdinal,
-        segment: &crate::SegmentReader,
+        segment: &crate::SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         let column_opt = segment.fast_fields().u64_lenient(&self.field)?;
         let (column, _column_type) = column_opt.ok_or_else(|| FastFieldNotAvailableError {

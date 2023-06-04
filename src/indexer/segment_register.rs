@@ -4,6 +4,8 @@ use std::fmt::{self, Debug, Display, Formatter};
 use crate::core::{SegmentId, SegmentMeta};
 use crate::indexer::delete_queue::DeleteCursor;
 use crate::indexer::segment_entry::SegmentEntry;
+use crate::schema::DocumentAccess;
+use crate::Document;
 
 /// The segment register keeps track
 /// of the list of segment, their size as well
@@ -13,12 +15,19 @@ use crate::indexer::segment_entry::SegmentEntry;
 /// segments that are currently searchable,
 /// and by the index merger to identify
 /// merge candidates.
-#[derive(Default)]
-pub struct SegmentRegister {
-    segment_states: HashMap<SegmentId, SegmentEntry>,
+pub struct SegmentRegister<D: DocumentAccess = Document> {
+    segment_states: HashMap<SegmentId, SegmentEntry<D>>,
 }
 
-impl Debug for SegmentRegister {
+impl<D: DocumentAccess> Default for SegmentRegister<D> {
+    fn default() -> Self {
+        Self {
+            segment_states: HashMap::new(),
+        }
+    }
+}
+
+impl<D: DocumentAccess> Debug for SegmentRegister<D> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "SegmentRegister(")?;
         for k in self.segment_states.keys() {
@@ -28,7 +37,7 @@ impl Debug for SegmentRegister {
         Ok(())
     }
 }
-impl Display for SegmentRegister {
+impl<D: DocumentAccess> Display for SegmentRegister<D> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "SegmentRegister(")?;
         for k in self.segment_states.keys() {
@@ -39,7 +48,7 @@ impl Display for SegmentRegister {
     }
 }
 
-impl SegmentRegister {
+impl<D: DocumentAccess> SegmentRegister<D> {
     pub fn clear(&mut self) {
         self.segment_states.clear();
     }
@@ -59,7 +68,7 @@ impl SegmentRegister {
         self.segment_states.keys().cloned().collect()
     }
 
-    pub fn segment_entries(&self) -> Vec<SegmentEntry> {
+    pub fn segment_entries(&self) -> Vec<SegmentEntry<D>> {
         self.segment_states.values().cloned().collect()
     }
 
@@ -76,7 +85,7 @@ impl SegmentRegister {
             .all(|segment_id| self.segment_states.contains_key(segment_id))
     }
 
-    pub fn add_segment_entry(&mut self, segment_entry: SegmentEntry) {
+    pub fn add_segment_entry(&mut self, segment_entry: SegmentEntry<D>) {
         let segment_id = segment_entry.segment_id();
         self.segment_states.insert(segment_id, segment_entry);
     }
@@ -85,18 +94,18 @@ impl SegmentRegister {
         self.segment_states.remove(segment_id);
     }
 
-    pub fn get(&self, segment_id: &SegmentId) -> Option<SegmentEntry> {
+    pub fn get(&self, segment_id: &SegmentId) -> Option<SegmentEntry<D>> {
         self.segment_states.get(segment_id).cloned()
     }
 
-    pub fn new(segment_metas: Vec<SegmentMeta>, delete_cursor: &DeleteCursor) -> SegmentRegister {
+    pub fn new(segment_metas: Vec<SegmentMeta>, delete_cursor: &DeleteCursor<D>) -> Self {
         let mut segment_states = HashMap::new();
         for segment_meta in segment_metas {
             let segment_id = segment_meta.id();
             let segment_entry = SegmentEntry::new(segment_meta, delete_cursor.clone(), None);
             segment_states.insert(segment_id, segment_entry);
         }
-        SegmentRegister { segment_states }
+        Self { segment_states }
     }
 }
 

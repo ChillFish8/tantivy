@@ -3,30 +3,38 @@ use std::ops::Deref;
 
 use super::{Collector, SegmentCollector};
 use crate::collector::Fruit;
-use crate::{DocId, Score, SegmentOrdinal, SegmentReader, TantivyError};
+use crate::schema::DocumentAccess;
+use crate::{DocId, Document, Score, SegmentOrdinal, SegmentReader, TantivyError};
 
 /// MultiFruit keeps Fruits from every nested Collector
 pub struct MultiFruit {
     sub_fruits: Vec<Option<Box<dyn Fruit>>>,
 }
 
-pub struct CollectorWrapper<TCollector: Collector>(TCollector);
+pub struct CollectorWrapper<D: DocumentAccess, TCollector: Collector<D>> {
+    inner: TCollector,
+    phantom: PhantomData<D>,
+}
 
-impl<TCollector: Collector> Collector for CollectorWrapper<TCollector> {
+impl<D, TCollector> Collector<D> for CollectorWrapper<D, TCollector>
+where
+    D: DocumentAccess,
+    TCollector: Collector<D>,
+{
     type Fruit = Box<dyn Fruit>;
     type Child = Box<dyn BoxableSegmentCollector>;
 
     fn for_segment(
         &self,
         segment_local_id: u32,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
     ) -> crate::Result<Box<dyn BoxableSegmentCollector>> {
-        let child = self.0.for_segment(segment_local_id, reader)?;
+        let child = self.inner.for_segment(segment_local_id, reader)?;
         Ok(Box::new(SegmentCollectorWrapper(child)))
     }
 
     fn requires_scoring(&self) -> bool {
-        self.0.requires_scoring()
+        self.inner.requires_scoring()
     }
 
     fn merge_fruits(
@@ -44,7 +52,7 @@ impl<TCollector: Collector> Collector for CollectorWrapper<TCollector> {
                     })
             })
             .collect::<crate::Result<_>>()?;
-        let merged_fruit = self.0.merge_fruits(typed_fruit)?;
+        let merged_fruit = self.inner.merge_fruits(typed_fruit)?;
         Ok(Box::new(merged_fruit))
     }
 }
@@ -146,27 +154,40 @@ impl<TFruit: Fruit> FruitHandle<TFruit> {
 /// # }
 /// ```
 #[allow(clippy::type_complexity)]
-#[derive(Default)]
-pub struct MultiCollector<'a> {
+pub struct MultiCollector<'a, D: DocumentAccess = Document> {
     collector_wrappers: Vec<
-        Box<dyn Collector<Child = Box<dyn BoxableSegmentCollector>, Fruit = Box<dyn Fruit>> + 'a>,
+        Box<
+            dyn Collector<D, Child = Box<dyn BoxableSegmentCollector>, Fruit = Box<dyn Fruit>> + 'a,
+        >,
     >,
 }
 
-impl<'a> MultiCollector<'a> {
+impl<'a, D: DocumentAccess> Default for MultiCollector<'a, D> {
+    fn default() -> Self {
+        Self {
+            collector_wrappers: Vec::new(),
+        }
+    }
+}
+
+impl<'a, D> MultiCollector<'a, D>
+where D: DocumentAccess
+{
     /// Create a new `MultiCollector`
     pub fn new() -> Self {
-        Default::default()
+        Self::default()
     }
 
     /// Add a new collector to our `MultiCollector`.
-    pub fn add_collector<'b: 'a, TCollector: Collector + 'b>(
+    pub fn add_collector<'b: 'a, TCollector: Collector<D> + 'b>(
         &mut self,
         collector: TCollector,
     ) -> FruitHandle<TCollector::Fruit> {
         let pos = self.collector_wrappers.len();
-        self.collector_wrappers
-            .push(Box::new(CollectorWrapper(collector)));
+        self.collector_wrappers.push(Box::new(CollectorWrapper {
+            inner: collector,
+            phantom: PhantomData,
+        }));
         FruitHandle {
             pos,
             _phantom: PhantomData,
@@ -174,14 +195,14 @@ impl<'a> MultiCollector<'a> {
     }
 }
 
-impl<'a> Collector for MultiCollector<'a> {
+impl<'a, D: DocumentAccess> Collector<D> for MultiCollector<'a, D> {
     type Fruit = MultiFruit;
     type Child = MultiCollectorChild;
 
     fn for_segment(
         &self,
         segment_local_id: SegmentOrdinal,
-        segment: &SegmentReader,
+        segment: &SegmentReader<D>,
     ) -> crate::Result<MultiCollectorChild> {
         let children = self
             .collector_wrappers

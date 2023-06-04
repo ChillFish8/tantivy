@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use super::term_scorer::TermScorer;
 use crate::core::SegmentReader;
 use crate::docset::{DocSet, BUFFER_LEN};
@@ -7,23 +9,24 @@ use crate::query::bm25::Bm25Weight;
 use crate::query::explanation::does_not_match;
 use crate::query::weight::{for_each_docset_buffered, for_each_scorer};
 use crate::query::{Explanation, Scorer, Weight};
-use crate::schema::IndexRecordOption;
-use crate::{DocId, Score, Term};
+use crate::schema::{DocumentAccess, IndexRecordOption};
+use crate::{DocId, Document, Score, Term};
 
-pub struct TermWeight {
+pub struct TermWeight<D: DocumentAccess = Document> {
     term: Term,
     index_record_option: IndexRecordOption,
     similarity_weight: Bm25Weight,
     scoring_enabled: bool,
+    _phantom: PhantomData<D>,
 }
 
-impl Weight for TermWeight {
-    fn scorer(&self, reader: &SegmentReader, boost: Score) -> crate::Result<Box<dyn Scorer>> {
+impl<D: DocumentAccess> Weight<D> for TermWeight<D> {
+    fn scorer(&self, reader: &SegmentReader<D>, boost: Score) -> crate::Result<Box<dyn Scorer>> {
         let term_scorer = self.specialized_scorer(reader, boost)?;
         Ok(Box::new(term_scorer))
     }
 
-    fn explain(&self, reader: &SegmentReader, doc: DocId) -> crate::Result<Explanation> {
+    fn explain(&self, reader: &SegmentReader<D>, doc: DocId) -> crate::Result<Explanation> {
         let mut scorer = self.specialized_scorer(reader, 1.0)?;
         if scorer.doc() > doc || scorer.seek(doc) != doc {
             return Err(does_not_match(doc));
@@ -33,7 +36,7 @@ impl Weight for TermWeight {
         Ok(explanation)
     }
 
-    fn count(&self, reader: &SegmentReader) -> crate::Result<u32> {
+    fn count(&self, reader: &SegmentReader<D>) -> crate::Result<u32> {
         if let Some(alive_bitset) = reader.alive_bitset() {
             Ok(self.scorer(reader, 1.0)?.count(alive_bitset))
         } else {
@@ -48,7 +51,7 @@ impl Weight for TermWeight {
     /// `DocSet` and push the scored documents to the collector.
     fn for_each(
         &self,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         callback: &mut dyn FnMut(DocId, Score),
     ) -> crate::Result<()> {
         let mut scorer = self.specialized_scorer(reader, 1.0)?;
@@ -60,7 +63,7 @@ impl Weight for TermWeight {
     /// `DocSet` and push the scored documents to the collector.
     fn for_each_no_score(
         &self,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         callback: &mut dyn FnMut(&[DocId]),
     ) -> crate::Result<()> {
         let mut scorer = self.specialized_scorer(reader, 1.0)?;
@@ -82,7 +85,7 @@ impl Weight for TermWeight {
     fn for_each_pruning(
         &self,
         threshold: Score,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         callback: &mut dyn FnMut(DocId, Score) -> Score,
     ) -> crate::Result<()> {
         let scorer = self.specialized_scorer(reader, 1.0)?;
@@ -91,18 +94,19 @@ impl Weight for TermWeight {
     }
 }
 
-impl TermWeight {
+impl<D: DocumentAccess> TermWeight<D> {
     pub fn new(
         term: Term,
         index_record_option: IndexRecordOption,
         similarity_weight: Bm25Weight,
         scoring_enabled: bool,
-    ) -> TermWeight {
-        TermWeight {
+    ) -> Self {
+        Self {
             term,
             index_record_option,
             similarity_weight,
             scoring_enabled,
+            _phantom: PhantomData,
         }
     }
 
@@ -112,7 +116,7 @@ impl TermWeight {
 
     pub(crate) fn specialized_scorer(
         &self,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         boost: Score,
     ) -> crate::Result<TermScorer> {
         let field = self.term.field();

@@ -1,6 +1,6 @@
 use std::io;
 
-use common::BinarySerializable;
+use common::BinaryDeserializable;
 
 use crate::directory::FileSlice;
 use crate::positions::PositionReader;

@@ -1,20 +1,18 @@
 use crate::collector::top_collector::{TopCollector, TopSegmentCollector};
 use crate::collector::{Collector, SegmentCollector};
+use crate::schema::DocumentAccess;
 use crate::{DocAddress, DocId, Score, SegmentReader};
 
-pub(crate) struct CustomScoreTopCollector<TCustomScorer, TScore = Score> {
+pub(crate) struct CustomScoreTopCollector<D, TCustomScorer, TScore = Score> {
     custom_scorer: TCustomScorer,
-    collector: TopCollector<TScore>,
+    collector: TopCollector<D, TScore>,
 }
 
-impl<TCustomScorer, TScore> CustomScoreTopCollector<TCustomScorer, TScore>
+impl<D, TCustomScorer, TScore> CustomScoreTopCollector<D, TCustomScorer, TScore>
 where TScore: Clone + PartialOrd
 {
-    pub(crate) fn new(
-        custom_scorer: TCustomScorer,
-        collector: TopCollector<TScore>,
-    ) -> CustomScoreTopCollector<TCustomScorer, TScore> {
-        CustomScoreTopCollector {
+    pub(crate) fn new(custom_scorer: TCustomScorer, collector: TopCollector<D, TScore>) -> Self {
+        Self {
             custom_scorer,
             collector,
         }
@@ -35,17 +33,18 @@ pub trait CustomSegmentScorer<TScore>: 'static {
 /// The `CustomerScorer` itself does not make much of the computation itself.
 /// Instead, it helps constructing `Self::Child` instances that will compute
 /// the score at a segment scale.
-pub trait CustomScorer<TScore>: Sync {
+pub trait CustomScorer<D, TScore>: Sync {
     /// Type of the associated [`CustomSegmentScorer`].
     type Child: CustomSegmentScorer<TScore>;
     /// Builds a child scorer for a specific segment. The child scorer is associated with
     /// a specific segment.
-    fn segment_scorer(&self, segment_reader: &SegmentReader) -> crate::Result<Self::Child>;
+    fn segment_scorer(&self, segment_reader: &SegmentReader<D>) -> crate::Result<Self::Child>;
 }
 
-impl<TCustomScorer, TScore> Collector for CustomScoreTopCollector<TCustomScorer, TScore>
+impl<D, TCustomScorer, TScore> Collector<D> for CustomScoreTopCollector<D, TCustomScorer, TScore>
 where
-    TCustomScorer: CustomScorer<TScore> + Send + Sync,
+    D: DocumentAccess,
+    TCustomScorer: CustomScorer<D, TScore> + Send + Sync,
     TScore: 'static + PartialOrd + Clone + Send + Sync,
 {
     type Fruit = Vec<(TScore, DocAddress)>;
@@ -55,7 +54,7 @@ where
     fn for_segment(
         &self,
         segment_local_id: u32,
-        segment_reader: &SegmentReader,
+        segment_reader: &SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         let segment_collector = self.collector.for_segment(segment_local_id, segment_reader);
         let segment_scorer = self.custom_scorer.segment_scorer(segment_reader)?;
@@ -100,14 +99,15 @@ where
     }
 }
 
-impl<F, TScore, T> CustomScorer<TScore> for F
+impl<D, F, TScore, T> CustomScorer<D, TScore> for F
 where
-    F: 'static + Send + Sync + Fn(&SegmentReader) -> T,
+    D: DocumentAccess,
+    F: 'static + Send + Sync + Fn(&SegmentReader<D>) -> T,
     T: CustomSegmentScorer<TScore>,
 {
     type Child = T;
 
-    fn segment_scorer(&self, segment_reader: &SegmentReader) -> crate::Result<Self::Child> {
+    fn segment_scorer(&self, segment_reader: &SegmentReader<D>) -> crate::Result<Self::Child> {
         Ok((self)(segment_reader))
     }
 }

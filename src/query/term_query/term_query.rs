@@ -3,7 +3,7 @@ use std::fmt;
 use super::term_weight::TermWeight;
 use crate::query::bm25::Bm25Weight;
 use crate::query::{EnableScoring, Explanation, Query, Weight};
-use crate::schema::IndexRecordOption;
+use crate::schema::{DocumentAccess, IndexRecordOption};
 use crate::Term;
 
 /// A Term query matches all of the documents
@@ -85,10 +85,10 @@ impl TermQuery {
     /// While `.weight(...)` returns a boxed trait object,
     /// this method return a specific implementation.
     /// This is useful for optimization purpose.
-    pub fn specialized_weight(
+    pub fn specialized_weight<D: DocumentAccess>(
         &self,
-        enable_scoring: EnableScoring<'_>,
-    ) -> crate::Result<TermWeight> {
+        enable_scoring: EnableScoring<'_, D>,
+    ) -> crate::Result<TermWeight<D>> {
         let schema = enable_scoring.schema();
         let field_entry = schema.get_field_entry(self.term.field());
         if !field_entry.is_indexed() {
@@ -120,8 +120,8 @@ impl TermQuery {
     }
 }
 
-impl Query for TermQuery {
-    fn weight(&self, enable_scoring: EnableScoring<'_>) -> crate::Result<Box<dyn Weight>> {
+impl<D: DocumentAccess> Query<D> for TermQuery {
+    fn weight(&self, enable_scoring: EnableScoring<'_, D>) -> crate::Result<Box<dyn Weight<D>>> {
         Ok(Box::new(self.specialized_weight(enable_scoring)?))
     }
     fn query_terms<'a>(&'a self, visitor: &mut dyn FnMut(&'a Term, bool)) {

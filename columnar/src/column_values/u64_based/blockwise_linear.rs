@@ -2,7 +2,9 @@ use std::io::Write;
 use std::sync::Arc;
 use std::{io, iter};
 
-use common::{BinarySerializable, CountingWriter, DeserializeFrom, OwnedBytes};
+use common::{
+    BinaryDeserializable, BinarySerializable, CountingWriter, DeserializeFrom, OwnedBytes,
+};
 use fastdivide::DividerU64;
 use tantivy_bitpacker::{compute_num_bits, BitPacker, BitUnpacker};
 
@@ -26,7 +28,9 @@ impl BinarySerializable for Block {
         self.bit_unpacker.bit_width().serialize(writer)?;
         Ok(())
     }
+}
 
+impl BinaryDeserializable for Block {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let line = Line::deserialize(reader)?;
         let bit_width = u8::deserialize(reader)?;

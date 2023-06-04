@@ -868,11 +868,11 @@ pub mod tests {
         assert_eq!(document.len(), 3);
         let values: Vec<&Value> = document.get_all(text_field).collect();
         assert_eq!(values.len(), 2);
-        assert_eq!(values[0].as_text(), Some("tantivy"));
-        assert_eq!(values[1].as_text(), Some("some other value"));
+        assert_eq!(values[0].as_str(), Some("tantivy"));
+        assert_eq!(values[1].as_str(), Some("some other value"));
         let values: Vec<&Value> = document.get_all(other_text_field).collect();
         assert_eq!(values.len(), 1);
-        assert_eq!(values[0].as_text(), Some("short"));
+        assert_eq!(values[0].as_str(), Some("short"));
     }
 
     #[test]

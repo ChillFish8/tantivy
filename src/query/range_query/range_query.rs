@@ -3,7 +3,7 @@ use std::net::Ipv6Addr;
 use std::ops::{Bound, Range};
 
 use columnar::MonotonicallyMappableToU128;
-use common::{BinarySerializable, BitSet};
+use common::{BinaryDeserializable, BitSet};
 
 use super::map_bound;
 use super::range_query_u64_fastfield::FastFieldRangeWeight;
@@ -367,7 +367,7 @@ impl Query for RangeQuery {
                 // assert the type maps to u64
                 assert!(maps_to_u64_fastfield(self.value_type));
                 let parse_from_bytes = |data: &Vec<u8>| {
-                    u64::from_be(BinarySerializable::deserialize(&mut &data[..]).unwrap())
+                    u64::from_be(BinaryDeserializable::deserialize(&mut &data[..]).unwrap())
                 };
 
                 let lower_bound = map_bound(&self.lower_bound, parse_from_bytes);

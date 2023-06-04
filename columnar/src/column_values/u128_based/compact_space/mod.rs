@@ -21,7 +21,9 @@ mod blank_range;
 mod build_compact_space;
 
 use build_compact_space::get_compact_space;
-use common::{BinarySerializable, CountingWriter, OwnedBytes, VInt, VIntU128};
+use common::{
+    BinaryDeserializable, BinarySerializable, CountingWriter, OwnedBytes, VInt, VIntU128,
+};
 use tantivy_bitpacker::{self, BitPacker, BitUnpacker};
 
 use crate::column_values::ColumnValues;
@@ -76,7 +78,9 @@ impl BinarySerializable for CompactSpace {
 
         Ok(())
     }
+}
 
+impl BinaryDeserializable for CompactSpace {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let num_ranges = VInt::deserialize(reader)?.0;
         let mut ranges_mapping: Vec<RangeMapping> = vec![];
@@ -272,7 +276,9 @@ impl BinarySerializable for IPCodecParams {
 
         Ok(())
     }
+}
 
+impl BinaryDeserializable for IPCodecParams {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let _header_flags = u64::deserialize(reader)?;
         let min_value = VIntU128::deserialize(reader)?.0;

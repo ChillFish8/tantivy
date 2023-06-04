@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::fieldnorm::FieldNormReader;
 use crate::query::Explanation;
-use crate::schema::Field;
+use crate::schema::{DocumentAccess, Field};
 use crate::{Score, Searcher, Term};
 
 const K1: Score = 1.2;
@@ -24,7 +24,7 @@ pub trait Bm25StatisticsProvider {
     fn doc_freq(&self, term: &Term) -> crate::Result<u64>;
 }
 
-impl Bm25StatisticsProvider for Searcher {
+impl<D: DocumentAccess> Bm25StatisticsProvider for Searcher<D> {
     fn total_num_tokens(&self, field: Field) -> crate::Result<u64> {
         let mut total_num_tokens = 0u64;
 

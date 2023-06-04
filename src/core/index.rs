@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::fmt;
+use std::marker::PhantomData;
 #[cfg(feature = "mmap")]
 use std::path::Path;
 use std::path::PathBuf;
@@ -19,9 +20,9 @@ use crate::error::{DataCorruption, TantivyError};
 use crate::indexer::index_writer::{MAX_NUM_THREAD, MEMORY_ARENA_NUM_BYTES_MIN};
 use crate::indexer::segment_updater::save_metas;
 use crate::reader::{IndexReader, IndexReaderBuilder};
-use crate::schema::{Field, FieldType, Schema};
+use crate::schema::{DocumentAccess, Field, FieldType, Schema};
 use crate::tokenizer::{TextAnalyzer, TokenizerManager};
-use crate::IndexWriter;
+use crate::{Document, IndexWriter};
 
 fn load_metas(
     directory: &dyn Directory,
@@ -103,18 +104,20 @@ fn save_new_metas(
 /// };
 /// let index = Index::builder().schema(schema).settings(settings).create_in_ram();
 /// ```
-pub struct IndexBuilder {
+pub struct IndexBuilder<D = Document> {
     schema: Option<Schema>,
     index_settings: IndexSettings,
     tokenizer_manager: TokenizerManager,
     fast_field_tokenizer_manager: TokenizerManager,
+    phantom: PhantomData<D>,
 }
-impl Default for IndexBuilder {
+impl<D> Default for IndexBuilder<D> {
     fn default() -> Self {
         IndexBuilder::new()
     }
 }
-impl IndexBuilder {
+
+impl<D> IndexBuilder<D> {
     /// Creates a new `IndexBuilder`
     pub fn new() -> Self {
         Self {
@@ -122,9 +125,9 @@ impl IndexBuilder {
             index_settings: IndexSettings::default(),
             tokenizer_manager: TokenizerManager::default(),
             fast_field_tokenizer_manager: TokenizerManager::default(),
+            phantom: PhantomData,
         }
     }
-
     /// Set the settings
     #[must_use]
     pub fn settings(mut self, settings: IndexSettings) -> Self {
@@ -150,13 +153,17 @@ impl IndexBuilder {
         self.fast_field_tokenizer_manager = tokenizers;
         self
     }
+}
 
+impl<D> IndexBuilder<D>
+where D: DocumentAccess
+{
     /// Creates a new index using the [`RamDirectory`].
     ///
     /// The index will be allocated in anonymous memory.
     /// This is useful for indexing small set of documents
     /// for instances like unit test or temporary in memory index.
-    pub fn create_in_ram(self) -> Result<Index, TantivyError> {
+    pub fn create_in_ram(self) -> Result<Index<D>, TantivyError> {
         let ram_directory = RamDirectory::create();
         self.create(ram_directory)
     }
@@ -167,9 +174,9 @@ impl IndexBuilder {
     /// If a previous index was in this directory, it returns an
     /// [`TantivyError::IndexAlreadyExists`] error.
     #[cfg(feature = "mmap")]
-    pub fn create_in_dir<P: AsRef<Path>>(self, directory_path: P) -> crate::Result<Index> {
+    pub fn create_in_dir<P: AsRef<Path>>(self, directory_path: P) -> crate::Result<Index<D>> {
         let mmap_directory: Box<dyn Directory> = Box::new(MmapDirectory::open(directory_path)?);
-        if Index::exists(&*mmap_directory)? {
+        if Index::<D>::exists(&*mmap_directory)? {
             return Err(TantivyError::IndexAlreadyExists);
         }
         self.create(mmap_directory)
@@ -188,7 +195,7 @@ impl IndexBuilder {
         self,
         dir: impl Into<Box<dyn Directory>>,
         mem_budget: usize,
-    ) -> crate::Result<SingleSegmentIndexWriter> {
+    ) -> crate::Result<SingleSegmentIndexWriter<D>> {
         let index = self.create(dir)?;
         let index_simple_writer = SingleSegmentIndexWriter::new(index, mem_budget)?;
         Ok(index_simple_writer)
@@ -204,7 +211,7 @@ impl IndexBuilder {
     /// For other unit tests, prefer the [`RamDirectory`], see:
     /// [`IndexBuilder::create_in_ram()`].
     #[cfg(feature = "mmap")]
-    pub fn create_from_tempdir(self) -> crate::Result<Index> {
+    pub fn create_from_tempdir(self) -> crate::Result<Index<D>> {
         let mmap_directory: Box<dyn Directory> = Box::new(MmapDirectory::create_from_tempdir()?);
         self.create(mmap_directory)
     }
@@ -217,9 +224,9 @@ impl IndexBuilder {
     }
 
     /// Opens or creates a new index in the provided directory
-    pub fn open_or_create<T: Into<Box<dyn Directory>>>(self, dir: T) -> crate::Result<Index> {
+    pub fn open_or_create<T: Into<Box<dyn Directory>>>(self, dir: T) -> crate::Result<Index<D>> {
         let dir = dir.into();
-        if !Index::exists(&*dir)? {
+        if !Index::<D>::exists(&*dir)? {
             return self.create(dir);
         }
         let mut index = Index::open(dir)?;
@@ -262,7 +269,7 @@ impl IndexBuilder {
     /// Creates a new index given an implementation of the trait `Directory`.
     ///
     /// If a directory previously existed, it will be erased.
-    fn create<T: Into<Box<dyn Directory>>>(self, dir: T) -> crate::Result<Index> {
+    fn create<T: Into<Box<dyn Directory>>>(self, dir: T) -> crate::Result<Index<D>> {
         self.validate()?;
         let dir = dir.into();
         let directory = ManagedDirectory::wrap(dir)?;
@@ -281,8 +288,7 @@ impl IndexBuilder {
 }
 
 /// Search Index
-#[derive(Clone)]
-pub struct Index {
+pub struct Index<D = Document> {
     directory: ManagedDirectory,
     schema: Schema,
     settings: IndexSettings,
@@ -290,13 +296,30 @@ pub struct Index {
     tokenizers: TokenizerManager,
     fast_field_tokenizers: TokenizerManager,
     inventory: SegmentMetaInventory,
+    _phantom: PhantomData<D>,
 }
 
-impl Index {
+impl<D> Clone for Index<D> {
+    fn clone(&self) -> Self {
+        Self {
+            directory: self.directory.clone(),
+            schema: self.schema.clone(),
+            settings: self.settings.clone(),
+            executor: self.executor.clone(),
+            tokenizers: self.tokenizers.clone(),
+            fast_field_tokenizers: self.fast_field_tokenizers.clone(),
+            inventory: self.inventory.clone(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<D> Index<D> {
     /// Creates a new builder.
-    pub fn builder() -> IndexBuilder {
+    pub fn builder() -> IndexBuilder<D> {
         IndexBuilder::new()
     }
+
     /// Examines the directory to see if it contains an index.
     ///
     /// Effectively, it only checks for the presence of the `meta.json` file.
@@ -327,13 +350,17 @@ impl Index {
         let default_num_threads = num_cpus::get();
         self.set_multithread_executor(default_num_threads)
     }
+}
 
+impl<D> Index<D>
+where D: DocumentAccess
+{
     /// Creates a new index using the [`RamDirectory`].
     ///
     /// The index will be allocated in anonymous memory.
     /// This is useful for indexing small set of documents
     /// for instances like unit test or temporary in memory index.
-    pub fn create_in_ram(schema: Schema) -> Index {
+    pub fn create_in_ram(schema: Schema) -> Self {
         IndexBuilder::new().schema(schema).create_in_ram().unwrap()
     }
 
@@ -343,10 +370,7 @@ impl Index {
     /// If a previous index was in this directory, then it returns
     /// a [`TantivyError::IndexAlreadyExists`] error.
     #[cfg(feature = "mmap")]
-    pub fn create_in_dir<P: AsRef<Path>>(
-        directory_path: P,
-        schema: Schema,
-    ) -> crate::Result<Index> {
+    pub fn create_in_dir<P: AsRef<Path>>(directory_path: P, schema: Schema) -> crate::Result<Self> {
         IndexBuilder::new()
             .schema(schema)
             .create_in_dir(directory_path)
@@ -356,7 +380,7 @@ impl Index {
     pub fn open_or_create<T: Into<Box<dyn Directory>>>(
         dir: T,
         schema: Schema,
-    ) -> crate::Result<Index> {
+    ) -> crate::Result<Self> {
         let dir = dir.into();
         IndexBuilder::new().schema(schema).open_or_create(dir)
     }
@@ -371,8 +395,10 @@ impl Index {
     /// For other unit tests, prefer the [`RamDirectory`],
     /// see: [`IndexBuilder::create_in_ram()`].
     #[cfg(feature = "mmap")]
-    pub fn create_from_tempdir(schema: Schema) -> crate::Result<Index> {
-        IndexBuilder::new().schema(schema).create_from_tempdir()
+    pub fn create_from_tempdir(schema: Schema) -> crate::Result<Self> {
+        IndexBuilder::<D>::new()
+            .schema(schema)
+            .create_from_tempdir()
     }
 
     /// Creates a new index given an implementation of the trait `Directory`.
@@ -382,7 +408,7 @@ impl Index {
         dir: T,
         schema: Schema,
         settings: IndexSettings,
-    ) -> crate::Result<Index> {
+    ) -> crate::Result<Self> {
         let dir: Box<dyn Directory> = dir.into();
         let mut builder = IndexBuilder::new().schema(schema);
         builder = builder.settings(settings);
@@ -394,9 +420,9 @@ impl Index {
         directory: ManagedDirectory,
         metas: &IndexMeta,
         inventory: SegmentMetaInventory,
-    ) -> Index {
+    ) -> Self {
         let schema = metas.schema.clone();
-        Index {
+        Self {
             settings: metas.index_settings.clone(),
             directory,
             schema,
@@ -404,6 +430,7 @@ impl Index {
             fast_field_tokenizers: TokenizerManager::default(),
             executor: Arc::new(Executor::single_thread()),
             inventory,
+            _phantom: PhantomData,
         }
     }
 
@@ -460,7 +487,7 @@ impl Index {
     /// Create a default [`IndexReader`] for the given index.
     ///
     /// See [`Index.reader_builder()`].
-    pub fn reader(&self) -> crate::Result<IndexReader> {
+    pub fn reader(&self) -> crate::Result<IndexReader<D>> {
         self.reader_builder().try_into()
     }
 
@@ -468,15 +495,15 @@ impl Index {
     ///
     /// Most project should create at most one reader for a given index.
     /// This method is typically called only once per `Index` instance.
-    pub fn reader_builder(&self) -> IndexReaderBuilder {
+    pub fn reader_builder(&self) -> IndexReaderBuilder<D> {
         IndexReaderBuilder::new(self.clone())
     }
 
     /// Opens a new directory from an index path.
     #[cfg(feature = "mmap")]
-    pub fn open_in_dir<P: AsRef<Path>>(directory_path: P) -> crate::Result<Index> {
+    pub fn open_in_dir<P: AsRef<Path>>(directory_path: P) -> crate::Result<Self> {
         let mmap_directory = MmapDirectory::open(directory_path)?;
-        Index::open(mmap_directory)
+        Self::open(mmap_directory)
     }
 
     /// Returns the list of the segment metas tracked by the index.
@@ -498,12 +525,12 @@ impl Index {
     }
 
     /// Open the index using the provided directory
-    pub fn open<T: Into<Box<dyn Directory>>>(directory: T) -> crate::Result<Index> {
+    pub fn open<T: Into<Box<dyn Directory>>>(directory: T) -> crate::Result<Self> {
         let directory = directory.into();
         let directory = ManagedDirectory::wrap(directory)?;
         let inventory = SegmentMetaInventory::default();
         let metas = load_metas(&directory, &inventory)?;
-        let index = Index::open_from_metas(directory, &metas, inventory);
+        let index = Self::open_from_metas(directory, &metas, inventory);
         Ok(index)
     }
 
@@ -535,7 +562,7 @@ impl Index {
         &self,
         num_threads: usize,
         overall_memory_arena_in_bytes: usize,
-    ) -> crate::Result<IndexWriter> {
+    ) -> crate::Result<IndexWriter<D>> {
         let directory_lock = self
             .directory
             .acquire_lock(&INDEX_WRITER_LOCK)
@@ -579,7 +606,7 @@ impl Index {
     /// If the lockfile already exists, returns `Error::FileAlreadyExists`.
     /// If the memory arena per thread is too small or too big, returns
     /// `TantivyError::InvalidArgument`
-    pub fn writer(&self, memory_arena_num_bytes: usize) -> crate::Result<IndexWriter> {
+    pub fn writer(&self, memory_arena_num_bytes: usize) -> crate::Result<IndexWriter<D>> {
         let mut num_threads = std::cmp::min(num_cpus::get(), MAX_NUM_THREAD);
         let memory_arena_num_bytes_per_thread = memory_arena_num_bytes / num_threads;
         if memory_arena_num_bytes_per_thread < MEMORY_ARENA_NUM_BYTES_MIN {
@@ -606,7 +633,7 @@ impl Index {
     }
 
     /// Returns the list of segments that are searchable
-    pub fn searchable_segments(&self) -> crate::Result<Vec<Segment>> {
+    pub fn searchable_segments(&self) -> crate::Result<Vec<Segment<D>>> {
         Ok(self
             .searchable_segment_metas()?
             .into_iter()
@@ -615,12 +642,12 @@ impl Index {
     }
 
     #[doc(hidden)]
-    pub fn segment(&self, segment_meta: SegmentMeta) -> Segment {
+    pub fn segment(&self, segment_meta: SegmentMeta) -> Segment<D> {
         Segment::for_index(self.clone(), segment_meta)
     }
 
     /// Creates a new segment.
-    pub fn new_segment(&self) -> Segment {
+    pub fn new_segment(&self) -> Segment<D> {
         let segment_meta = self
             .inventory
             .new_segment_meta(SegmentId::generate_random(), 0);

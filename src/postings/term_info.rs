@@ -2,7 +2,7 @@ use std::io;
 use std::iter::ExactSizeIterator;
 use std::ops::Range;
 
-use common::{BinarySerializable, FixedSize};
+use common::{BinaryDeserializable, BinarySerializable, FixedSize};
 
 /// `TermInfo` wraps the metadata associated with a Term.
 /// It is segment-local.
@@ -47,7 +47,9 @@ impl BinarySerializable for TermInfo {
         self.positions_num_bytes().serialize(writer)?;
         Ok(())
     }
+}
 
+impl BinaryDeserializable for TermInfo {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let doc_freq = u32::deserialize(reader)?;
         let postings_start_offset = u64::deserialize(reader)? as usize;

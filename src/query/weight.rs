@@ -2,7 +2,8 @@ use super::Scorer;
 use crate::core::SegmentReader;
 use crate::docset::BUFFER_LEN;
 use crate::query::Explanation;
-use crate::{DocId, DocSet, Score, TERMINATED};
+use crate::schema::DocumentAccess;
+use crate::{DocId, DocSet, Document, Score, TERMINATED};
 
 /// Iterates through all of the documents and scores matched by the DocSet
 /// `DocSet`.
@@ -63,19 +64,19 @@ pub(crate) fn for_each_pruning_scorer<TScorer: Scorer + ?Sized>(
 /// for a given set of segments.
 ///
 /// See [`Query`](crate::query::Query).
-pub trait Weight: Send + Sync + 'static {
+pub trait Weight<D: DocumentAccess = Document>: Send + Sync + 'static {
     /// Returns the scorer for the given segment.
     ///
     /// `boost` is a multiplier to apply to the score.
     ///
     /// See [`Query`](crate::query::Query).
-    fn scorer(&self, reader: &SegmentReader, boost: Score) -> crate::Result<Box<dyn Scorer>>;
+    fn scorer(&self, reader: &SegmentReader<D>, boost: Score) -> crate::Result<Box<dyn Scorer>>;
 
     /// Returns an [`Explanation`] for the given document.
-    fn explain(&self, reader: &SegmentReader, doc: DocId) -> crate::Result<Explanation>;
+    fn explain(&self, reader: &SegmentReader<D>, doc: DocId) -> crate::Result<Explanation>;
 
     /// Returns the number documents within the given [`SegmentReader`].
-    fn count(&self, reader: &SegmentReader) -> crate::Result<u32> {
+    fn count(&self, reader: &SegmentReader<D>) -> crate::Result<u32> {
         let mut scorer = self.scorer(reader, 1.0)?;
         if let Some(alive_bitset) = reader.alive_bitset() {
             Ok(scorer.count(alive_bitset))
@@ -88,7 +89,7 @@ pub trait Weight: Send + Sync + 'static {
     /// `DocSet` and push the scored documents to the collector.
     fn for_each(
         &self,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         callback: &mut dyn FnMut(DocId, Score),
     ) -> crate::Result<()> {
         let mut scorer = self.scorer(reader, 1.0)?;
@@ -100,7 +101,7 @@ pub trait Weight: Send + Sync + 'static {
     /// `DocSet` and push the scored documents to the collector.
     fn for_each_no_score(
         &self,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         callback: &mut dyn FnMut(&[DocId]),
     ) -> crate::Result<()> {
         let mut docset = self.scorer(reader, 1.0)?;
@@ -123,7 +124,7 @@ pub trait Weight: Send + Sync + 'static {
     fn for_each_pruning(
         &self,
         threshold: Score,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         callback: &mut dyn FnMut(DocId, Score) -> Score,
     ) -> crate::Result<()> {
         let mut scorer = self.scorer(reader, 1.0)?;

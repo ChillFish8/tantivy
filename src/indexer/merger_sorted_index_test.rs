@@ -274,7 +274,7 @@ mod tests {
             };
             let doc = searcher.doc(DocAddress::new(0, blubber_pos)).unwrap();
             assert_eq!(
-                doc.get_first(my_text_field).unwrap().as_text(),
+                doc.get_first(my_text_field).unwrap().as_str(),
                 Some("blubber")
             );
             let doc = searcher.doc(DocAddress::new(0, 0)).unwrap();

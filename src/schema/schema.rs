@@ -787,11 +787,11 @@ mod tests {
                 )
                 .unwrap();
             assert_eq!(
-                doc.get_first(title_field).unwrap().as_text(),
+                doc.get_first(title_field).unwrap().as_str(),
                 Some("my title")
             );
             assert_eq!(
-                doc.get_first(author_field).unwrap().as_text(),
+                doc.get_first(author_field).unwrap().as_str(),
                 Some("fulmicoton")
             );
             assert_eq!(doc.get_first(count_field).unwrap().as_u64(), Some(4));

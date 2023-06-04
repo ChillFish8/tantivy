@@ -2,7 +2,8 @@ use std::ops::DerefMut;
 use std::sync::{Arc, RwLock, Weak};
 
 use super::operation::DeleteOperation;
-use crate::Opstamp;
+use crate::schema::DocumentAccess;
+use crate::{Document, Opstamp};
 
 // The DeleteQueue is similar in conceptually to a multiple
 // consumer single producer broadcast channel.
@@ -17,26 +18,41 @@ use crate::Opstamp;
 //   (and some or none of the past operations... The client is in charge of checking the opstamps.).
 // - cloning an existing cursor returns a new cursor, that is at the exact same position, and can
 //   now advance independently from the original cursor.
-#[derive(Default)]
-struct InnerDeleteQueue {
-    writer: Vec<DeleteOperation>,
-    last_block: Weak<Block>,
+struct InnerDeleteQueue<D: DocumentAccess> {
+    writer: Vec<DeleteOperation<D>>,
+    last_block: Weak<Block<D>>,
 }
 
-#[derive(Clone)]
-pub struct DeleteQueue {
-    inner: Arc<RwLock<InnerDeleteQueue>>,
+impl<D: DocumentAccess> Default for InnerDeleteQueue<D> {
+    fn default() -> Self {
+        Self {
+            writer: Vec::new(),
+            last_block: Weak::default(),
+        }
+    }
 }
 
-impl DeleteQueue {
+pub struct DeleteQueue<D: DocumentAccess = Document> {
+    inner: Arc<RwLock<InnerDeleteQueue<D>>>,
+}
+
+impl<D: DocumentAccess> Clone for DeleteQueue<D> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+impl<D: DocumentAccess> DeleteQueue<D> {
     // Creates a new delete queue.
-    pub fn new() -> DeleteQueue {
-        DeleteQueue {
+    pub fn new() -> Self {
+        Self {
             inner: Arc::default(),
         }
     }
 
-    fn get_last_block(&self) -> Arc<Block> {
+    fn get_last_block(&self) -> Arc<Block<D>> {
         {
             // try get the last block with simply acquiring the read lock.
             let rlock = self.inner.read().unwrap();
@@ -62,7 +78,7 @@ impl DeleteQueue {
     // consume future delete operations.
     //
     // Past delete operations are not accessible.
-    pub fn cursor(&self) -> DeleteCursor {
+    pub fn cursor(&self) -> DeleteCursor<D> {
         let last_block = self.get_last_block();
         let operations_len = last_block.operations.len();
         DeleteCursor {
@@ -72,7 +88,7 @@ impl DeleteQueue {
     }
 
     // Appends a new delete operations.
-    pub fn push(&self, delete_operation: DeleteOperation) {
+    pub fn push(&self, delete_operation: DeleteOperation<D>) {
         self.inner
             .write()
             .expect("Failed to acquire write lock on delete queue writer")
@@ -93,7 +109,7 @@ impl DeleteQueue {
     // It then ask the delete queue if there happen to
     // be some unflushed operations.
     //
-    fn flush(&self) -> Option<Arc<Block>> {
+    fn flush(&self) -> Option<Arc<Block<D>>> {
         let mut self_wlock = self
             .inner
             .write()
@@ -115,21 +131,21 @@ impl DeleteQueue {
     }
 }
 
-enum InnerNextBlock {
-    Writer(DeleteQueue),
-    Closed(Arc<Block>),
+enum InnerNextBlock<D: DocumentAccess> {
+    Writer(DeleteQueue<D>),
+    Closed(Arc<Block<D>>),
 }
 
-struct NextBlock(RwLock<InnerNextBlock>);
+struct NextBlock<D: DocumentAccess>(RwLock<InnerNextBlock<D>>);
 
-impl From<DeleteQueue> for NextBlock {
-    fn from(delete_queue: DeleteQueue) -> NextBlock {
-        NextBlock(RwLock::new(InnerNextBlock::Writer(delete_queue)))
+impl<D: DocumentAccess> From<DeleteQueue<D>> for NextBlock<D> {
+    fn from(delete_queue: DeleteQueue<D>) -> Self {
+        Self(RwLock::new(InnerNextBlock::Writer(delete_queue)))
     }
 }
 
-impl NextBlock {
-    fn next_block(&self) -> Option<Arc<Block>> {
+impl<D: DocumentAccess> NextBlock<D> {
+    fn next_block(&self) -> Option<Arc<Block<D>>> {
         {
             let next_read_lock = self
                 .0
@@ -164,18 +180,26 @@ impl NextBlock {
     }
 }
 
-struct Block {
-    operations: Arc<[DeleteOperation]>,
-    next: NextBlock,
+struct Block<D: DocumentAccess = Document> {
+    operations: Arc<[DeleteOperation<D>]>,
+    next: NextBlock<D>,
 }
 
-#[derive(Clone)]
-pub struct DeleteCursor {
-    block: Arc<Block>,
+pub struct DeleteCursor<D: DocumentAccess = Document> {
+    block: Arc<Block<D>>,
     pos: usize,
 }
 
-impl DeleteCursor {
+impl<D: DocumentAccess> Clone for DeleteCursor<D> {
+    fn clone(&self) -> Self {
+        Self {
+            block: self.block.clone(),
+            pos: self.pos,
+        }
+    }
+}
+
+impl<D: DocumentAccess> DeleteCursor<D> {
     /// Skips operations and position it so that
     /// - either all of the delete operation currently in the queue are consume and the next get
     ///   will return `None`.
@@ -233,7 +257,7 @@ impl DeleteCursor {
 
     /// Get the current delete operation.
     /// Calling `.get` does not advance the cursor.
-    pub fn get(&mut self) -> Option<&DeleteOperation> {
+    pub fn get(&mut self) -> Option<&DeleteOperation<D>> {
         if self.load_block_if_required() {
             Some(&self.block.operations[self.pos])
         } else {

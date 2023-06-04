@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use super::{Collector, SegmentCollector};
+use crate::schema::DocumentAccess;
 use crate::{DocAddress, DocId, Score};
 
 /// Collectors that returns the set of DocAddress that matches the query.
@@ -8,14 +9,14 @@ use crate::{DocAddress, DocId, Score};
 /// This collector is mostly useful for tests.
 pub struct DocSetCollector;
 
-impl Collector for DocSetCollector {
+impl<D: DocumentAccess> Collector<D> for DocSetCollector {
     type Fruit = HashSet<DocAddress>;
     type Child = DocSetChildCollector;
 
     fn for_segment(
         &self,
         segment_local_id: crate::SegmentOrdinal,
-        _segment: &crate::SegmentReader,
+        _segment: &crate::SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         Ok(DocSetChildCollector {
             segment_local_id,

@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use common::{BinarySerializable, CountingWriter};
+use common::{BinaryDeserializable, BinarySerializable, CountingWriter};
 use once_cell::sync::Lazy;
 use tantivy_fst::raw::Fst;
 use tantivy_fst::Automaton;

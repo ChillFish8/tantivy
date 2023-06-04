@@ -2,7 +2,7 @@ use std::cmp;
 use std::io::{self, Read, Write};
 
 use byteorder::{ByteOrder, LittleEndian};
-use common::{BinarySerializable, FixedSize};
+use common::{BinaryDeserializable, BinarySerializable, FixedSize};
 use tantivy_bitpacker::{compute_num_bits, BitPacker};
 
 use crate::directory::{FileSlice, OwnedBytes};
@@ -31,7 +31,9 @@ impl BinarySerializable for TermInfoBlockMeta {
         ])?;
         Ok(())
     }
+}
 
+impl BinaryDeserializable for TermInfoBlockMeta {
     fn deserialize<R: Read>(reader: &mut R) -> io::Result<Self> {
         let offset = u64::deserialize(reader)?;
         let ref_term_info = TermInfo::deserialize(reader)?;

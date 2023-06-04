@@ -12,7 +12,7 @@ use crate::positions::PositionSerializer;
 use crate::postings::compression::{BlockEncoder, VIntEncoder, COMPRESSION_BLOCK_SIZE};
 use crate::postings::skip::SkipSerializer;
 use crate::query::Bm25Weight;
-use crate::schema::{Field, FieldEntry, FieldType, IndexRecordOption, Schema};
+use crate::schema::{DocumentAccess, Field, FieldEntry, FieldType, IndexRecordOption, Schema};
 use crate::termdict::TermDictionaryBuilder;
 use crate::{DocId, Score};
 
@@ -56,7 +56,8 @@ pub struct InvertedIndexSerializer {
 
 impl InvertedIndexSerializer {
     /// Open a new `InvertedIndexSerializer` for the given segment
-    pub fn open(segment: &mut Segment) -> crate::Result<InvertedIndexSerializer> {
+    pub fn open<D>(segment: &mut Segment<D>) -> crate::Result<InvertedIndexSerializer>
+    where D: DocumentAccess {
         use crate::SegmentComponent::{Positions, Postings, Terms};
         let inv_index_serializer = InvertedIndexSerializer {
             terms_write: CompositeWrite::wrap(segment.open_write(Terms)?),

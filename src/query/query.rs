@@ -6,16 +6,16 @@ use super::bm25::Bm25StatisticsProvider;
 use super::Weight;
 use crate::core::searcher::Searcher;
 use crate::query::Explanation;
-use crate::schema::Schema;
-use crate::{DocAddress, Term};
+use crate::schema::{DocumentAccess, Schema};
+use crate::{DocAddress, Document, Term};
 
 /// Argument used in `Query::weight(..)`
 #[derive(Copy, Clone)]
-pub enum EnableScoring<'a> {
+pub enum EnableScoring<'a, D: DocumentAccess = Document> {
     /// Pass this to enable scoring.
     Enabled {
         /// The searcher to use during scoring.
-        searcher: &'a Searcher,
+        searcher: &'a Searcher<D>,
 
         /// A [Bm25StatisticsProvider] used to compute BM25 scores.
         ///
@@ -29,14 +29,14 @@ pub enum EnableScoring<'a> {
         /// Schema is required.
         schema: &'a Schema,
         /// Searcher should be provided if available.
-        searcher_opt: Option<&'a Searcher>,
+        searcher_opt: Option<&'a Searcher<D>>,
     },
 }
 
-impl<'a> EnableScoring<'a> {
+impl<'a, D: DocumentAccess> EnableScoring<'a, D> {
     /// Create using [Searcher] with scoring enabled.
-    pub fn enabled_from_searcher(searcher: &'a Searcher) -> EnableScoring<'a> {
-        EnableScoring::Enabled {
+    pub fn enabled_from_searcher(searcher: &'a Searcher<D>) -> Self {
+        Self::Enabled {
             searcher,
             statistics_provider: searcher,
         }
@@ -45,24 +45,24 @@ impl<'a> EnableScoring<'a> {
     /// Create using a custom [Bm25StatisticsProvider] with scoring enabled.
     pub fn enabled_from_statistics_provider(
         statistics_provider: &'a dyn Bm25StatisticsProvider,
-        searcher: &'a Searcher,
-    ) -> EnableScoring<'a> {
-        EnableScoring::Enabled {
+        searcher: &'a Searcher<D>,
+    ) -> Self {
+        Self::Enabled {
             statistics_provider,
             searcher,
         }
     }
 
     /// Create using [Searcher] with scoring disabled.
-    pub fn disabled_from_searcher(searcher: &'a Searcher) -> EnableScoring<'a> {
-        EnableScoring::Disabled {
+    pub fn disabled_from_searcher(searcher: &'a Searcher<D>) -> Self {
+        Self::Disabled {
             schema: searcher.schema(),
             searcher_opt: Some(searcher),
         }
     }
 
     /// Create using [Schema] with scoring disabled.
-    pub fn disabled_from_schema(schema: &'a Schema) -> EnableScoring<'a> {
+    pub fn disabled_from_schema(schema: &'a Schema) -> Self {
         Self::Disabled {
             schema,
             searcher_opt: None,
@@ -70,24 +70,24 @@ impl<'a> EnableScoring<'a> {
     }
 
     /// Returns the searcher if available.
-    pub fn searcher(&self) -> Option<&Searcher> {
+    pub fn searcher(&self) -> Option<&Searcher<D>> {
         match self {
-            EnableScoring::Enabled { searcher, .. } => Some(*searcher),
-            EnableScoring::Disabled { searcher_opt, .. } => searcher_opt.to_owned(),
+            Self::Enabled { searcher, .. } => Some(*searcher),
+            Self::Disabled { searcher_opt, .. } => searcher_opt.to_owned(),
         }
     }
 
     /// Returns the schema.
     pub fn schema(&self) -> &Schema {
         match self {
-            EnableScoring::Enabled { searcher, .. } => searcher.schema(),
-            EnableScoring::Disabled { schema, .. } => schema,
+            Self::Enabled { searcher, .. } => searcher.schema(),
+            Self::Disabled { schema, .. } => schema,
         }
     }
 
     /// Returns true if the scoring is enabled.
     pub fn is_scoring_enabled(&self) -> bool {
-        matches!(self, EnableScoring::Enabled { .. })
+        matches!(self, Self::Enabled { .. })
     }
 }
 
@@ -125,24 +125,31 @@ impl<'a> EnableScoring<'a> {
 ///
 /// [`Scorer`]: crate::query::Scorer
 /// [`SegmentReader`]: crate::SegmentReader
-pub trait Query: QueryClone + Send + Sync + downcast_rs::Downcast + fmt::Debug {
+pub trait Query<D = Document>:
+    QueryClone + Send + Sync + downcast_rs::Downcast + fmt::Debug
+where D: DocumentAccess
+{
     /// Create the weight associated with a query.
     ///
     /// If scoring is not required, setting `scoring_enabled` to `false`
     /// can increase performances.
     ///
     /// See [`Weight`].
-    fn weight(&self, enable_scoring: EnableScoring<'_>) -> crate::Result<Box<dyn Weight>>;
+    fn weight(&self, enable_scoring: EnableScoring<'_, D>) -> crate::Result<Box<dyn Weight<D>>>;
 
     /// Returns an `Explanation` for the score of the document.
-    fn explain(&self, searcher: &Searcher, doc_address: DocAddress) -> crate::Result<Explanation> {
+    fn explain(
+        &self,
+        searcher: &Searcher<D>,
+        doc_address: DocAddress,
+    ) -> crate::Result<Explanation> {
         let weight = self.weight(EnableScoring::enabled_from_searcher(searcher))?;
         let reader = searcher.segment_reader(doc_address.segment_ord);
         weight.explain(reader, doc_address.doc_id)
     }
 
     /// Returns the number of documents matching the query.
-    fn count(&self, searcher: &Searcher) -> crate::Result<usize> {
+    fn count(&self, searcher: &Searcher<D>) -> crate::Result<usize> {
         let weight = self.weight(EnableScoring::disabled_from_searcher(searcher))?;
         let mut result = 0;
         for reader in searcher.segment_readers() {

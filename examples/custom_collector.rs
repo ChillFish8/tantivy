@@ -12,7 +12,7 @@ use columnar::Column;
 // Importing tantivy...
 use tantivy::collector::{Collector, SegmentCollector};
 use tantivy::query::QueryParser;
-use tantivy::schema::{Schema, FAST, INDEXED, TEXT};
+use tantivy::schema::{DocumentAccess, Schema, FAST, INDEXED, TEXT};
 use tantivy::{doc, Index, Score, SegmentReader};
 
 #[derive(Default)]
@@ -59,7 +59,7 @@ impl StatsCollector {
     }
 }
 
-impl Collector for StatsCollector {
+impl<D: DocumentAccess> Collector<D> for StatsCollector {
     // That's the type of our result.
     // Our standard deviation will be a float.
     type Fruit = Option<Stats>;
@@ -69,7 +69,7 @@ impl Collector for StatsCollector {
     fn for_segment(
         &self,
         _segment_local_id: u32,
-        segment_reader: &SegmentReader,
+        segment_reader: &SegmentReader<D>,
     ) -> tantivy::Result<StatsSegmentCollector> {
         let fast_field_reader = segment_reader.fast_fields().u64(&self.field)?;
         Ok(StatsSegmentCollector {

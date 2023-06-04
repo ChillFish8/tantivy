@@ -2,7 +2,7 @@ use std::io;
 use std::io::Write;
 use std::num::NonZeroU64;
 
-use common::{BinarySerializable, VInt};
+use common::{BinaryDeserializable, BinarySerializable, VInt};
 
 use crate::RowId;
 
@@ -35,7 +35,9 @@ impl BinarySerializable for ColumnStats {
         VInt(self.num_rows as u64).serialize(writer)?;
         Ok(())
     }
+}
 
+impl BinaryDeserializable for ColumnStats {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let min_value = VInt::deserialize(reader)?.0;
         let gcd = VInt::deserialize(reader)?.0;
@@ -57,7 +59,7 @@ impl BinarySerializable for ColumnStats {
 mod tests {
     use std::num::NonZeroU64;
 
-    use common::BinarySerializable;
+    use common::{BinaryDeserializable, BinarySerializable};
 
     use crate::column_values::ColumnStats;
 
