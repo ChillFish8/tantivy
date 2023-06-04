@@ -1,4 +1,5 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
 
 use columnar::ColumnType;
 use rustc_hash::FxHashMap;
@@ -18,7 +19,8 @@ use crate::aggregation::segment_agg_result::{
     build_segment_agg_collector, SegmentAggregationCollector,
 };
 use crate::error::DataCorruption;
-use crate::TantivyError;
+use crate::schema::DocumentAccess;
+use crate::{Document, TantivyError};
 
 /// Creates a bucket for every unique term and counts the number of occurences.
 /// Note that doc_count in the response buckets equals term count here.
@@ -199,14 +201,41 @@ impl TermsAggregationInternal {
     }
 }
 
-#[derive(Clone, Debug, Default)]
 /// Container to store term_ids/or u64 values and their buckets.
-struct TermBuckets {
+struct TermBuckets<D: DocumentAccess> {
     pub(crate) entries: FxHashMap<u64, u32>,
-    pub(crate) sub_aggs: FxHashMap<u64, Box<dyn SegmentAggregationCollector>>,
+    pub(crate) sub_aggs: FxHashMap<u64, Box<dyn SegmentAggregationCollector<D>>>,
 }
 
-impl TermBuckets {
+impl<D: DocumentAccess> Debug for TermBuckets<D> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TermBuckets")
+            .field("entries", &self.entries)
+            .field("sub_aggs", &self.sub_aggs)
+            .finish()
+    }
+}
+
+impl<D: DocumentAccess> Clone for TermBuckets<D> {
+    fn clone(&self) -> Self {
+        Self {
+            entries: self.entries.clone(),
+            sub_aggs: self.sub_aggs.clone(),
+        }
+    }
+}
+
+impl<D: DocumentAccess> Default for TermBuckets<D> {
+    fn default() -> Self {
+        Self {
+            entries: FxHashMap::default(),
+            sub_aggs: FxHashMap::default(),
+        }
+    }
+}
+
+
+impl<D: DocumentAccess> TermBuckets<D> {
     fn get_memory_consumption(&self) -> usize {
         let sub_aggs_mem = self.sub_aggs.memory_consumption();
         let buckets_mem = self.entries.memory_consumption();
@@ -215,7 +244,7 @@ impl TermBuckets {
 
     fn force_flush(
         &mut self,
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         for sub_aggregations in &mut self.sub_aggs.values_mut() {
             sub_aggregations.as_mut().flush(agg_with_accessor)?;
@@ -226,16 +255,41 @@ impl TermBuckets {
 
 /// The composite collector is used, when we have different types under one field, to support a term
 /// aggregation on both.
-#[derive(Clone, Debug)]
-pub struct SegmentTermCollectorComposite {
-    term_agg1: SegmentTermCollector, // field type 1, e.g. strings
-    term_agg2: SegmentTermCollector, // field type 2, e.g. u64
+pub struct SegmentTermCollectorComposite<D: DocumentAccess = Document> {
+    term_agg1: SegmentTermCollector<D>, // field type 1, e.g. strings
+    term_agg2: SegmentTermCollector<D>, // field type 2, e.g. u64
     accessor_idx: usize,
+    _phantom: PhantomData<D>,
 }
-impl SegmentAggregationCollector for SegmentTermCollectorComposite {
+
+impl<D: DocumentAccess> Debug for SegmentTermCollectorComposite<D> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SegmentTermCollectorComposite")
+            .field("term_agg1", &self.term_agg1)
+            .field("term_agg2", &self.term_agg2)
+            .field("accessor_idx", &self.accessor_idx)
+            .finish()
+    }
+}
+
+impl<D: DocumentAccess> Clone for SegmentTermCollectorComposite<D> {
+    fn clone(&self) -> Self {
+        Self {
+            term_agg1: self.term_agg1.clone(),
+            term_agg2: self.term_agg2.clone(),
+            accessor_idx: self.accessor_idx.clone(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<D> SegmentAggregationCollector<D> for SegmentTermCollectorComposite<D>
+where
+    D: DocumentAccess
+{
     fn add_intermediate_aggregation_result(
         self: Box<Self>,
-        agg_with_accessor: &AggregationsWithAccessor,
+        agg_with_accessor: &AggregationsWithAccessor<D>,
         results: &mut IntermediateAggregationResults,
     ) -> crate::Result<()> {
         let name = agg_with_accessor.aggs.keys[self.accessor_idx].to_string();
@@ -260,7 +314,7 @@ impl SegmentAggregationCollector for SegmentTermCollectorComposite {
     fn collect(
         &mut self,
         doc: crate::DocId,
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         self.term_agg1.collect_block(&[doc], agg_with_accessor)?;
         self.swap_accessor(&mut agg_with_accessor.aggs.values[self.accessor_idx]);
@@ -273,7 +327,7 @@ impl SegmentAggregationCollector for SegmentTermCollectorComposite {
     fn collect_block(
         &mut self,
         docs: &[crate::DocId],
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         self.term_agg1.collect_block(docs, agg_with_accessor)?;
         self.swap_accessor(&mut agg_with_accessor.aggs.values[self.accessor_idx]);
@@ -283,7 +337,7 @@ impl SegmentAggregationCollector for SegmentTermCollectorComposite {
         Ok(())
     }
 
-    fn flush(&mut self, agg_with_accessor: &mut AggregationsWithAccessor) -> crate::Result<()> {
+    fn flush(&mut self, agg_with_accessor: &mut AggregationsWithAccessor<D>) -> crate::Result<()> {
         self.term_agg1.flush(agg_with_accessor)?;
         self.swap_accessor(&mut agg_with_accessor.aggs.values[self.accessor_idx]);
         self.term_agg2.flush(agg_with_accessor)?;
@@ -293,10 +347,10 @@ impl SegmentAggregationCollector for SegmentTermCollectorComposite {
     }
 }
 
-impl SegmentTermCollectorComposite {
+impl<D: DocumentAccess> SegmentTermCollectorComposite<D> {
     /// Swaps the accessor and field type with the second accessor and field type.
     /// This way we can use the same code for both aggregations.
-    fn swap_accessor(&self, aggregations: &mut AggregationWithAccessor) {
+    fn swap_accessor(&self, aggregations: &mut AggregationWithAccessor<D>) {
         if let Some(accessor) = aggregations.accessor2.as_mut() {
             std::mem::swap(&mut accessor.0, &mut aggregations.accessor);
             std::mem::swap(&mut accessor.1, &mut aggregations.field_type);
@@ -305,7 +359,7 @@ impl SegmentTermCollectorComposite {
 
     pub(crate) fn from_req_and_validate(
         req: &TermsAggregation,
-        sub_aggregations: &mut AggregationsWithAccessor,
+        sub_aggregations: &mut AggregationsWithAccessor<D>,
         field_type: ColumnType,
         field_type2: ColumnType,
         accessor_idx: usize,
@@ -324,18 +378,18 @@ impl SegmentTermCollectorComposite {
                 accessor_idx,
             )?,
             accessor_idx,
+            _phantom: PhantomData,
         })
     }
 }
 
 /// The collector puts values from the fast field into the correct buckets and does a conversion to
 /// the correct datatype.
-#[derive(Clone, Debug)]
-pub struct SegmentTermCollector {
+pub struct SegmentTermCollector<D: DocumentAccess = Document> {
     /// The buckets containing the aggregation data.
-    term_buckets: TermBuckets,
+    term_buckets: TermBuckets<D>,
     req: TermsAggregationInternal,
-    blueprint: Option<Box<dyn SegmentAggregationCollector>>,
+    blueprint: Option<Box<dyn SegmentAggregationCollector<D>>>,
     field_type: ColumnType,
     accessor_idx: usize,
 }
@@ -345,10 +399,37 @@ pub(crate) fn get_agg_name_and_property(name: &str) -> (&str, &str) {
     (agg_name, agg_property)
 }
 
-impl SegmentAggregationCollector for SegmentTermCollector {
+impl<D: DocumentAccess> Debug for SegmentTermCollector<D> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SegmentTermCollector")
+            .field("term_buckets", &self.term_buckets)
+            .field("req", &self.req)
+            .field("blueprint", &self.blueprint)
+            .field("field_type", &self.field_type)
+            .field("accessor_idx", &self.accessor_idx)
+            .finish()
+    }
+}
+
+impl<D: DocumentAccess> Clone for SegmentTermCollector<D> {
+    fn clone(&self) -> Self {
+        Self {
+            term_buckets: self.term_buckets.clone(),
+            req: self.req.clone(),
+            blueprint: self.blueprint.clone(),
+            field_type: self.field_type.clone(),
+            accessor_idx: self.accessor_idx,
+        }
+    }
+}
+
+impl<D> SegmentAggregationCollector<D> for SegmentTermCollector<D>
+where
+    D: DocumentAccess
+{
     fn add_intermediate_aggregation_result(
         self: Box<Self>,
-        agg_with_accessor: &AggregationsWithAccessor,
+        agg_with_accessor: &AggregationsWithAccessor<D>,
         results: &mut IntermediateAggregationResults,
     ) -> crate::Result<()> {
         let name = agg_with_accessor.aggs.keys[self.accessor_idx].to_string();
@@ -364,7 +445,7 @@ impl SegmentAggregationCollector for SegmentTermCollector {
     fn collect(
         &mut self,
         doc: crate::DocId,
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         self.collect_block(&[doc], agg_with_accessor)
     }
@@ -373,7 +454,7 @@ impl SegmentAggregationCollector for SegmentTermCollector {
     fn collect_block(
         &mut self,
         docs: &[crate::DocId],
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         let bucket_agg_accessor = &mut agg_with_accessor.aggs.values[self.accessor_idx];
 
@@ -406,7 +487,7 @@ impl SegmentAggregationCollector for SegmentTermCollector {
         Ok(())
     }
 
-    fn flush(&mut self, agg_with_accessor: &mut AggregationsWithAccessor) -> crate::Result<()> {
+    fn flush(&mut self, agg_with_accessor: &mut AggregationsWithAccessor<D>) -> crate::Result<()> {
         let sub_aggregation_accessor =
             &mut agg_with_accessor.aggs.values[self.accessor_idx].sub_aggregation;
 
@@ -415,7 +496,7 @@ impl SegmentAggregationCollector for SegmentTermCollector {
     }
 }
 
-impl SegmentTermCollector {
+impl<D: DocumentAccess> SegmentTermCollector<D> {
     fn get_memory_consumption(&self) -> usize {
         let self_mem = std::mem::size_of::<Self>();
         let term_buckets_mem = self.term_buckets.get_memory_consumption();
@@ -424,7 +505,7 @@ impl SegmentTermCollector {
 
     pub(crate) fn from_req_and_validate(
         req: &TermsAggregation,
-        sub_aggregations: &mut AggregationsWithAccessor,
+        sub_aggregations: &mut AggregationsWithAccessor<D>,
         field_type: ColumnType,
         accessor_idx: usize,
     ) -> crate::Result<Self> {
@@ -452,7 +533,7 @@ impl SegmentTermCollector {
             None
         };
 
-        Ok(SegmentTermCollector {
+        Ok(Self {
             req: TermsAggregationInternal::from_req(req),
             term_buckets,
             blueprint,
@@ -464,7 +545,7 @@ impl SegmentTermCollector {
     #[inline]
     pub(crate) fn into_intermediate_bucket_result(
         mut self,
-        agg_with_accessor: &AggregationWithAccessor,
+        agg_with_accessor: &AggregationWithAccessor<D>,
     ) -> crate::Result<IntermediateBucketResult> {
         let mut entries: Vec<(u64, u32)> = self.term_buckets.entries.into_iter().collect();
 

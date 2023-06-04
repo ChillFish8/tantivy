@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 mod compact_space;
 
-use common::{BinarySerializable, OwnedBytes, VInt};
+use common::{BinaryDeserializable, BinarySerializable, OwnedBytes, VInt};
 use compact_space::{CompactSpaceCompressor, CompactSpaceDecompressor};
 
 use crate::column_values::monotonic_map_column;
@@ -27,7 +27,9 @@ impl BinarySerializable for U128Header {
         self.codec_type.serialize(writer)?;
         Ok(())
     }
+}
 
+impl BinaryDeserializable for U128Header {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let num_vals = VInt::deserialize(reader)?.0 as u32;
         let codec_type = U128FastFieldCodecType::deserialize(reader)?;
@@ -75,7 +77,9 @@ impl BinarySerializable for U128FastFieldCodecType {
     fn serialize<W: Write + ?Sized>(&self, wrt: &mut W) -> io::Result<()> {
         self.to_code().serialize(wrt)
     }
+}
 
+impl BinaryDeserializable for U128FastFieldCodecType {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let code = u8::deserialize(reader)?;
         let codec_type: Self = Self::from_code(code)

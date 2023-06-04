@@ -15,7 +15,7 @@ use std::sync::Arc;
 use columnar::{ColumnValues, DynamicColumn, HasAssociatedColumnType};
 
 use crate::collector::{Collector, SegmentCollector};
-use crate::schema::Field;
+use crate::schema::{DocumentAccess, Field};
 use crate::{Score, SegmentReader, TantivyError};
 
 /// The `FilterCollector` filters docs using a fast field value and a predicate.
@@ -60,19 +60,22 @@ use crate::{Score, SegmentReader, TantivyError};
 /// # Ok(())
 /// # }
 /// ```
-pub struct FilterCollector<TCollector, TPredicate, TPredicateValue: Default>
-where TPredicate: 'static + Clone
+pub struct FilterCollector<D, TCollector, TPredicate, TPredicateValue: Default>
+where
+    TPredicate: 'static + Clone
 {
     field: Field,
     collector: TCollector,
     predicate: TPredicate,
     t_predicate_value: PhantomData<TPredicateValue>,
+    phantom: PhantomData<D>,
 }
 
-impl<TCollector, TPredicate, TPredicateValue: Default>
-    FilterCollector<TCollector, TPredicate, TPredicateValue>
+impl<D, TCollector, TPredicate, TPredicateValue: Default>
+    FilterCollector<D, TCollector, TPredicate, TPredicateValue>
 where
-    TCollector: Collector + Send + Sync,
+    D: DocumentAccess + Send,
+    TCollector: Collector<D> + Send + Sync,
     TPredicate: Fn(TPredicateValue) -> bool + Send + Sync + Clone,
 {
     /// Create a new FilterCollector.
@@ -80,20 +83,22 @@ where
         field: Field,
         predicate: TPredicate,
         collector: TCollector,
-    ) -> FilterCollector<TCollector, TPredicate, TPredicateValue> {
-        FilterCollector {
+    ) -> Self {
+        Self {
             field,
             predicate,
             collector,
             t_predicate_value: PhantomData,
+            phantom: PhantomData,
         }
     }
 }
 
-impl<TCollector, TPredicate, TPredicateValue: Default> Collector
-    for FilterCollector<TCollector, TPredicate, TPredicateValue>
+impl<D, TCollector, TPredicate, TPredicateValue: Default> Collector<D>
+    for FilterCollector<D, TCollector, TPredicate, TPredicateValue>
 where
-    TCollector: Collector + Send + Sync,
+    D: DocumentAccess,
+    TCollector: Collector<D> + Send + Sync,
     TPredicate: 'static + Fn(TPredicateValue) -> bool + Send + Sync + Clone,
     TPredicateValue: HasAssociatedColumnType,
     DynamicColumn: Into<Option<columnar::Column<TPredicateValue>>>,
@@ -107,7 +112,7 @@ where
     fn for_segment(
         &self,
         segment_local_id: u32,
-        segment_reader: &SegmentReader,
+        segment_reader: &SegmentReader<D>,
     ) -> crate::Result<FilterSegmentCollector<TCollector::Child, TPredicate, TPredicateValue>> {
         let schema = segment_reader.schema();
         let field_entry = schema.get_field_entry(self.field);

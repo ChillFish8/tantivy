@@ -8,7 +8,8 @@ use super::segment_agg_result::{
 };
 use crate::aggregation::agg_req_with_accessor::get_aggs_with_segment_accessor_and_validate;
 use crate::collector::{Collector, SegmentCollector};
-use crate::{DocId, SegmentReader, TantivyError};
+use crate::{DocId, Document, SegmentReader, TantivyError};
+use crate::schema::DocumentAccess;
 
 /// The default max bucket count, before the aggregation fails.
 pub const DEFAULT_BUCKET_LIMIT: u32 = 65000;
@@ -57,15 +58,15 @@ impl DistributedAggregationCollector {
     }
 }
 
-impl Collector for DistributedAggregationCollector {
+impl<D: DocumentAccess> Collector<D> for DistributedAggregationCollector {
     type Fruit = IntermediateAggregationResults;
 
-    type Child = AggregationSegmentCollector;
+    type Child = AggregationSegmentCollector<D>;
 
     fn for_segment(
         &self,
         _segment_local_id: crate::SegmentOrdinal,
-        reader: &crate::SegmentReader,
+        reader: &SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         AggregationSegmentCollector::from_agg_req_and_reader(&self.agg, reader, &self.limits)
     }
@@ -82,15 +83,15 @@ impl Collector for DistributedAggregationCollector {
     }
 }
 
-impl Collector for AggregationCollector {
+impl<D: DocumentAccess> Collector<D> for AggregationCollector {
     type Fruit = AggregationResults;
 
-    type Child = AggregationSegmentCollector;
+    type Child = AggregationSegmentCollector<D>;
 
     fn for_segment(
         &self,
         _segment_local_id: crate::SegmentOrdinal,
-        reader: &crate::SegmentReader,
+        reader: &SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         AggregationSegmentCollector::from_agg_req_and_reader(&self.agg, reader, &self.limits)
     }
@@ -123,25 +124,25 @@ fn merge_fruits(
 }
 
 /// `AggregationSegmentCollector` does the aggregation collection on a segment.
-pub struct AggregationSegmentCollector {
-    aggs_with_accessor: AggregationsWithAccessor,
-    agg_collector: BufAggregationCollector,
+pub struct AggregationSegmentCollector<D: DocumentAccess = Document> {
+    aggs_with_accessor: AggregationsWithAccessor<D>,
+    agg_collector: BufAggregationCollector<D>,
     error: Option<TantivyError>,
 }
 
-impl AggregationSegmentCollector {
+impl<D: DocumentAccess> AggregationSegmentCollector<D> {
     /// Creates an `AggregationSegmentCollector from` an [`Aggregations`] request and a segment
     /// reader. Also includes validation, e.g. checking field types and existence.
     pub fn from_agg_req_and_reader(
         agg: &Aggregations,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         limits: &AggregationLimits,
     ) -> crate::Result<Self> {
         let mut aggs_with_accessor =
             get_aggs_with_segment_accessor_and_validate(agg, reader, limits)?;
         let result =
             BufAggregationCollector::new(build_segment_agg_collector(&mut aggs_with_accessor)?);
-        Ok(AggregationSegmentCollector {
+        Ok(Self {
             aggs_with_accessor,
             agg_collector: result,
             error: None,
@@ -149,7 +150,7 @@ impl AggregationSegmentCollector {
     }
 }
 
-impl SegmentCollector for AggregationSegmentCollector {
+impl<D: DocumentAccess> SegmentCollector for AggregationSegmentCollector<D> {
     type Fruit = crate::Result<IntermediateAggregationResults>;
 
     #[inline]

@@ -2,26 +2,28 @@ use common::TerminatingWrite;
 
 use crate::core::{Segment, SegmentComponent};
 use crate::directory::WritePtr;
+use crate::Document;
 use crate::fieldnorm::FieldNormsSerializer;
 use crate::postings::InvertedIndexSerializer;
+use crate::schema::DocumentAccess;
 use crate::store::StoreWriter;
 
 /// Segment serializer is in charge of laying out on disk
 /// the data accumulated and sorted by the `SegmentWriter`.
-pub struct SegmentSerializer {
-    segment: Segment,
-    pub(crate) store_writer: StoreWriter,
+pub struct SegmentSerializer<D: DocumentAccess = Document> {
+    segment: Segment<D>,
+    pub(crate) store_writer: StoreWriter<D>,
     fast_field_write: WritePtr,
     fieldnorms_serializer: Option<FieldNormsSerializer>,
     postings_serializer: InvertedIndexSerializer,
 }
 
-impl SegmentSerializer {
+impl<D: DocumentAccess> SegmentSerializer<D> {
     /// Creates a new `SegmentSerializer`.
     pub fn for_segment(
-        mut segment: Segment,
+        mut segment: Segment<D>,
         is_in_merge: bool,
-    ) -> crate::Result<SegmentSerializer> {
+    ) -> crate::Result<Self> {
         // If the segment is going to be sorted, we stream the docs first to a temporary file.
         // In the merge case this is not necessary because we can kmerge the already sorted
         // segments
@@ -54,7 +56,7 @@ impl SegmentSerializer {
         let fieldnorms_serializer = FieldNormsSerializer::from_write(fieldnorms_write)?;
 
         let postings_serializer = InvertedIndexSerializer::open(&mut segment)?;
-        Ok(SegmentSerializer {
+        Ok(Self {
             segment,
             store_writer,
             fast_field_write,
@@ -68,11 +70,11 @@ impl SegmentSerializer {
         self.store_writer.mem_usage()
     }
 
-    pub fn segment(&self) -> &Segment {
+    pub fn segment(&self) -> &Segment<D> {
         &self.segment
     }
 
-    pub fn segment_mut(&mut self) -> &mut Segment {
+    pub fn segment_mut(&mut self) -> &mut Segment<D> {
         &mut self.segment
     }
 
@@ -94,7 +96,7 @@ impl SegmentSerializer {
     }
 
     /// Accessor to the `StoreWriter`.
-    pub fn get_store_writer(&mut self) -> &mut StoreWriter {
+    pub fn get_store_writer(&mut self) -> &mut StoreWriter<D> {
         &mut self.store_writer
     }
 

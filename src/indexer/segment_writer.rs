@@ -12,7 +12,7 @@ use crate::postings::{
     compute_table_memory_size, serialize_postings, IndexingContext, IndexingPosition,
     PerFieldPostingsWriter, PostingsWriter,
 };
-use crate::schema::{FieldEntry, FieldType, Schema, Term, Value, DATE_TIME_PRECISION_INDEXED};
+use crate::schema::{FieldEntry, FieldType, Schema, Term, Value, DATE_TIME_PRECISION_INDEXED, DocumentAccess, DocValue};
 use crate::store::{StoreReader, StoreWriter};
 use crate::tokenizer::{FacetTokenizer, PreTokenizedStream, TextAnalyzer, Tokenizer};
 use crate::{DocId, Document, Opstamp, SegmentComponent};
@@ -55,12 +55,12 @@ fn remap_doc_opstamps(
 ///
 /// They creates the postings list in anonymous memory.
 /// The segment is laid on disk when the segment gets `finalized`.
-pub struct SegmentWriter {
+pub struct SegmentWriter<D: DocumentAccess = Document> {
     pub(crate) max_doc: DocId,
     pub(crate) ctx: IndexingContext,
     pub(crate) per_field_postings_writers: PerFieldPostingsWriter,
-    pub(crate) segment_serializer: SegmentSerializer,
-    pub(crate) fast_field_writers: FastFieldsWriter,
+    pub(crate) segment_serializer: SegmentSerializer<D>,
+    pub(crate) fast_field_writers: FastFieldsWriter<D>,
     pub(crate) fieldnorms_writer: FieldNormsWriter,
     pub(crate) doc_opstamps: Vec<Opstamp>,
     per_field_text_analyzers: Vec<TextAnalyzer>,
@@ -68,7 +68,10 @@ pub struct SegmentWriter {
     schema: Schema,
 }
 
-impl SegmentWriter {
+impl<D> SegmentWriter<D>
+where
+    D: DocumentAccess
+{
     /// Creates a new `SegmentWriter`
     ///
     /// The arguments are defined as follows
@@ -80,8 +83,8 @@ impl SegmentWriter {
     /// - schema
     pub fn for_segment(
         memory_budget_in_bytes: usize,
-        segment: Segment,
-    ) -> crate::Result<SegmentWriter> {
+        segment: Segment<D>,
+    ) -> crate::Result<Self> {
         let schema = segment.schema();
         let tokenizer_manager = segment.index().tokenizers().clone();
         let tokenizer_manager_fast_field = segment.index().fast_field_tokenizer().clone();
@@ -157,7 +160,7 @@ impl SegmentWriter {
             + self.segment_serializer.mem_usage()
     }
 
-    fn index_document(&mut self, doc: &Document) -> crate::Result<()> {
+    fn index_document(&mut self, doc: &D) -> crate::Result<()> {
         let doc_id = self.max_doc;
         let vals_grouped_by_field = doc
             .field_values()
@@ -337,7 +340,7 @@ impl SegmentWriter {
     /// Indexes a new document
     ///
     /// As a user, you should rather use `IndexWriter`'s add_document.
-    pub fn add_document(&mut self, add_operation: AddOperation) -> crate::Result<()> {
+    pub fn add_document(&mut self, add_operation: AddOperation<D>) -> crate::Result<()> {
         let AddOperation { document, opstamp } = add_operation;
         self.doc_opstamps.push(opstamp);
         self.fast_field_writers.add_document(&document)?;
@@ -374,12 +377,12 @@ impl SegmentWriter {
 /// to the `SegmentSerializer`.
 ///
 /// `doc_id_map` is used to map to the new doc_id order.
-fn remap_and_write(
+fn remap_and_write<D: DocumentAccess>(
     per_field_postings_writers: &PerFieldPostingsWriter,
     ctx: IndexingContext,
-    fast_field_writers: FastFieldsWriter,
+    fast_field_writers: FastFieldsWriter<D>,
     fieldnorms_writer: &FieldNormsWriter,
-    mut serializer: SegmentSerializer,
+    mut serializer: SegmentSerializer<D>,
     doc_id_map: Option<&DocIdMapping>,
 ) -> crate::Result<()> {
     debug!("remap-and-write");
@@ -415,7 +418,7 @@ fn remap_and_write(
         )?;
         let old_store_writer = std::mem::replace(&mut serializer.store_writer, store_writer);
         old_store_writer.close()?;
-        let store_read = StoreReader::open(
+        let store_read: StoreReader<D> = StoreReader::open(
             serializer
                 .segment()
                 .open_read(SegmentComponent::TempStore)?,

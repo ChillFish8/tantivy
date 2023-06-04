@@ -13,6 +13,7 @@ use crate::aggregation::intermediate_agg_result::{
 use crate::aggregation::segment_agg_result::SegmentAggregationCollector;
 use crate::aggregation::{f64_from_fastfield_u64, AggregationError};
 use crate::{DocId, TantivyError};
+use crate::schema::DocumentAccess;
 
 /// # Percentiles
 ///
@@ -235,10 +236,10 @@ impl SegmentPercentilesCollector {
         })
     }
     #[inline]
-    pub(crate) fn collect_block_with_field(
+    pub(crate) fn collect_block_with_field<D: DocumentAccess>(
         &mut self,
         docs: &[DocId],
-        agg_accessor: &mut AggregationWithAccessor,
+        agg_accessor: &mut AggregationWithAccessor<D>,
     ) {
         agg_accessor
             .column_block_accessor
@@ -251,11 +252,11 @@ impl SegmentPercentilesCollector {
     }
 }
 
-impl SegmentAggregationCollector for SegmentPercentilesCollector {
+impl<D: DocumentAccess> SegmentAggregationCollector<D> for SegmentPercentilesCollector {
     #[inline]
     fn add_intermediate_aggregation_result(
         self: Box<Self>,
-        agg_with_accessor: &AggregationsWithAccessor,
+        agg_with_accessor: &AggregationsWithAccessor<D>,
         results: &mut IntermediateAggregationResults,
     ) -> crate::Result<()> {
         let name = agg_with_accessor.aggs.keys[self.accessor_idx].to_string();
@@ -273,7 +274,7 @@ impl SegmentAggregationCollector for SegmentPercentilesCollector {
     fn collect(
         &mut self,
         doc: crate::DocId,
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         let field = &agg_with_accessor.aggs.values[self.accessor_idx].accessor;
 
@@ -289,7 +290,7 @@ impl SegmentAggregationCollector for SegmentPercentilesCollector {
     fn collect_block(
         &mut self,
         docs: &[crate::DocId],
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         let field = &mut agg_with_accessor.aggs.values[self.accessor_idx];
         self.collect_block_with_field(docs, field);

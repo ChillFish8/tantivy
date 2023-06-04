@@ -1,11 +1,12 @@
 use std::io;
+use std::marker::PhantomData;
 
 use common::BinarySerializable;
 
 use super::compressors::Compressor;
 use super::StoreReader;
 use crate::directory::WritePtr;
-use crate::schema::{Document, Schema};
+use crate::schema::{Document, document, DocumentAccess, Schema};
 use crate::store::store_compressor::BlockCompressor;
 use crate::DocId;
 
@@ -16,16 +17,17 @@ use crate::DocId;
 /// as opposed to when the segment is getting finalized.
 ///
 /// The skip list index on the other hand, is built in memory.
-pub struct StoreWriter {
+pub struct StoreWriter<D: DocumentAccess = Document> {
     compressor: Compressor,
     block_size: usize,
     num_docs_in_current_block: DocId,
     current_block: Vec<u8>,
     doc_pos: Vec<u32>,
-    block_compressor: BlockCompressor,
+    block_compressor: BlockCompressor<D>,
+    _phantom: PhantomData<D>
 }
 
-impl StoreWriter {
+impl<D: DocumentAccess> StoreWriter<D> {
     /// Create a store writer.
     ///
     /// The store writer will writes blocks on disc as
@@ -35,15 +37,16 @@ impl StoreWriter {
         compressor: Compressor,
         block_size: usize,
         dedicated_thread: bool,
-    ) -> io::Result<StoreWriter> {
+    ) -> io::Result<Self> {
         let block_compressor = BlockCompressor::new(compressor, writer, dedicated_thread)?;
-        Ok(StoreWriter {
+        Ok(Self {
             compressor,
             block_size,
             num_docs_in_current_block: 0,
             doc_pos: Vec::new(),
             current_block: Vec::new(),
             block_compressor,
+            _phantom: PhantomData,
         })
     }
 
@@ -95,9 +98,9 @@ impl StoreWriter {
     ///
     /// The document id is implicitly the current number
     /// of documents.
-    pub fn store(&mut self, document: &Document, schema: &Schema) -> io::Result<()> {
+    pub fn store(&mut self, document: &D, schema: &Schema) -> io::Result<()> {
         self.doc_pos.push(self.current_block.len() as u32);
-        document.serialize_stored(schema, &mut self.current_block)?;
+        document::doc_binary_wrappers::serialize_stored(document, schema, &mut self.current_block)?;
         self.num_docs_in_current_block += 1;
         self.check_flush_block()?;
         Ok(())
@@ -119,7 +122,7 @@ impl StoreWriter {
     /// This method is an optimization compared to iterating over the documents
     /// in the store and adding them one by one, as the store's data will
     /// not be decompressed and then recompressed.
-    pub fn stack(&mut self, store_reader: StoreReader) -> io::Result<()> {
+    pub fn stack(&mut self, store_reader: StoreReader<D>) -> io::Result<()> {
         // We flush the current block first before stacking
         self.send_current_block_to_compressor()?;
         self.block_compressor.stack_reader(store_reader)?;

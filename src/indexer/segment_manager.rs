@@ -4,14 +4,24 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::segment_register::SegmentRegister;
 use crate::core::{SegmentId, SegmentMeta};
+use crate::Document;
 use crate::error::TantivyError;
 use crate::indexer::delete_queue::DeleteCursor;
 use crate::indexer::SegmentEntry;
+use crate::schema::DocumentAccess;
 
-#[derive(Default)]
-struct SegmentRegisters {
-    uncommitted: SegmentRegister,
-    committed: SegmentRegister,
+struct SegmentRegisters<D: DocumentAccess> {
+    uncommitted: SegmentRegister<D>,
+    committed: SegmentRegister<D>,
+}
+
+impl<D: DocumentAccess> Default for SegmentRegisters<D> {
+    fn default() -> Self {
+        Self {
+            uncommitted: SegmentRegister::default(),
+            committed: SegmentRegister::default(),
+        }
+    }
 }
 
 #[derive(PartialEq, Eq)]
@@ -20,7 +30,7 @@ pub(crate) enum SegmentsStatus {
     Uncommitted,
 }
 
-impl SegmentRegisters {
+impl<D: DocumentAccess> SegmentRegisters<D> {
     /// Check if all the segments are committed or uncommitted.
     ///
     /// If some segment is missing or segments are in a different state (this should not happen
@@ -47,12 +57,19 @@ impl SegmentRegisters {
 ///
 /// It guarantees the atomicity of the
 /// changes (merges especially)
-#[derive(Default)]
-pub struct SegmentManager {
-    registers: RwLock<SegmentRegisters>,
+pub struct SegmentManager<D: DocumentAccess = Document> {
+    registers: RwLock<SegmentRegisters<D>>,
 }
 
-impl Debug for SegmentManager {
+impl<D: DocumentAccess> Default for SegmentManager<D> {
+    fn default() -> Self {
+        Self {
+            registers: Default::default(),
+        }
+    }
+}
+
+impl<D: DocumentAccess> Debug for SegmentManager<D> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let lock = self.read();
         write!(
@@ -63,12 +80,12 @@ impl Debug for SegmentManager {
     }
 }
 
-impl SegmentManager {
+impl<D: DocumentAccess> SegmentManager<D> {
     pub fn from_segments(
         segment_metas: Vec<SegmentMeta>,
-        delete_cursor: &DeleteCursor,
-    ) -> SegmentManager {
-        SegmentManager {
+        delete_cursor: &DeleteCursor<D>,
+    ) -> Self {
+        Self {
             registers: RwLock::new(SegmentRegisters {
                 uncommitted: SegmentRegister::default(),
                 committed: SegmentRegister::new(segment_metas, delete_cursor),
@@ -91,7 +108,7 @@ impl SegmentManager {
         )
     }
     /// Returns all of the segment entries (committed or uncommitted)
-    pub fn segment_entries(&self) -> Vec<SegmentEntry> {
+    pub fn segment_entries(&self) -> Vec<SegmentEntry<D>> {
         let registers_lock = self.read();
         let mut segment_entries = registers_lock.uncommitted.segment_entries();
         segment_entries.extend(registers_lock.committed.segment_entries());
@@ -101,13 +118,13 @@ impl SegmentManager {
     // Lock poisoning should never happen :
     // The lock is acquired and released within this class,
     // and the operations cannot panic.
-    fn read(&self) -> RwLockReadGuard<'_, SegmentRegisters> {
+    fn read(&self) -> RwLockReadGuard<'_, SegmentRegisters<D>> {
         self.registers
             .read()
             .expect("Failed to acquire read lock on SegmentManager.")
     }
 
-    fn write(&self) -> RwLockWriteGuard<'_, SegmentRegisters> {
+    fn write(&self) -> RwLockWriteGuard<'_, SegmentRegisters<D>> {
         self.registers
             .write()
             .expect("Failed to acquire write lock on SegmentManager.")
@@ -134,7 +151,7 @@ impl SegmentManager {
         registers_lock.uncommitted.clear();
     }
 
-    pub fn commit(&self, segment_entries: Vec<SegmentEntry>) {
+    pub fn commit(&self, segment_entries: Vec<SegmentEntry<D>>) {
         let mut registers_lock = self.write();
         registers_lock.committed.clear();
         registers_lock.uncommitted.clear();
@@ -148,7 +165,7 @@ impl SegmentManager {
     /// Returns an error if some segments are missing, or if
     /// the `segment_ids` are not either all committed or all
     /// uncommitted.
-    pub fn start_merge(&self, segment_ids: &[SegmentId]) -> crate::Result<Vec<SegmentEntry>> {
+    pub fn start_merge(&self, segment_ids: &[SegmentId]) -> crate::Result<Vec<SegmentEntry<D>>> {
         let registers_lock = self.read();
         let mut segment_entries = vec![];
         if registers_lock.uncommitted.contains_all(segment_ids) {
@@ -177,7 +194,7 @@ impl SegmentManager {
         Ok(segment_entries)
     }
 
-    pub fn add_segment(&self, segment_entry: SegmentEntry) {
+    pub fn add_segment(&self, segment_entry: SegmentEntry<D>) {
         let mut registers_lock = self.write();
         registers_lock.uncommitted.add_segment_entry(segment_entry);
     }
@@ -187,7 +204,7 @@ impl SegmentManager {
     pub(crate) fn end_merge(
         &self,
         before_merge_segment_ids: &[SegmentId],
-        after_merge_segment_entry: Option<SegmentEntry>,
+        after_merge_segment_entry: Option<SegmentEntry<D>>,
     ) -> crate::Result<SegmentsStatus> {
         let mut registers_lock = self.write();
         let segments_status = registers_lock
@@ -201,7 +218,7 @@ impl SegmentManager {
                 )
             })?;
 
-        let target_register: &mut SegmentRegister = match segments_status {
+        let target_register = match segments_status {
             SegmentsStatus::Uncommitted => &mut registers_lock.uncommitted,
             SegmentsStatus::Committed => &mut registers_lock.committed,
         };

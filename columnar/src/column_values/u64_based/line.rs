@@ -1,7 +1,7 @@
 use std::io;
 use std::num::NonZeroU32;
 
-use common::{BinarySerializable, VInt};
+use common::{BinaryDeserializable, BinarySerializable, VInt};
 
 use crate::column_values::ColumnValues;
 
@@ -151,7 +151,9 @@ impl BinarySerializable for Line {
         VInt(self.intercept).serialize(writer)?;
         Ok(())
     }
+}
 
+impl BinaryDeserializable for Line {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let slope = VInt::deserialize(reader)?.0;
         let intercept = VInt::deserialize(reader)?.0;

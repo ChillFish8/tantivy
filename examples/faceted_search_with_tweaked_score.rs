@@ -95,7 +95,7 @@ fn main() -> tantivy::Result<()> {
                     .unwrap()
                     .get_first(title)
                     .unwrap()
-                    .as_text()
+                    .as_str()
                     .unwrap()
                     .to_owned()
             })

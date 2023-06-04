@@ -1,4 +1,5 @@
 use std::io;
+use std::marker::PhantomData;
 
 use columnar::{ColumnarWriter, NumericalValue};
 use common::replace_in_place;
@@ -6,7 +7,7 @@ use tokenizer_api::Token;
 
 use crate::indexer::doc_id_mapping::DocIdMapping;
 use crate::schema::term::{JSON_PATH_SEGMENT_SEP, JSON_PATH_SEGMENT_SEP_STR};
-use crate::schema::{value_type_to_column_type, Document, FieldType, Schema, Type, Value};
+use crate::schema::{value_type_to_column_type, Document, FieldType, Schema, Type, Value, DocumentAccess, DocValue};
 use crate::tokenizer::{TextAnalyzer, TokenizerManager};
 use crate::{DateTimePrecision, DocId, TantivyError};
 
@@ -15,7 +16,7 @@ use crate::{DateTimePrecision, DocId, TantivyError};
 const JSON_DEPTH_LIMIT: usize = 20;
 
 /// The `FastFieldsWriter` groups all of the fast field writers.
-pub struct FastFieldsWriter {
+pub struct FastFieldsWriter<D = Document> {
     columnar_writer: ColumnarWriter,
     fast_field_names: Vec<Option<String>>, //< TODO see if we can hash the field name hash too.
     per_field_tokenizer: Vec<Option<TextAnalyzer>>,
@@ -24,20 +25,21 @@ pub struct FastFieldsWriter {
     num_docs: DocId,
     // Buffer that we recycle to avoid allocation.
     json_path_buffer: String,
+    phantom: PhantomData<D>,
 }
 
-impl FastFieldsWriter {
+impl<D: DocumentAccess> FastFieldsWriter<D> {
     /// Create all `FastFieldWriter` required by the schema.
     #[cfg(test)]
-    pub fn from_schema(schema: &Schema) -> crate::Result<FastFieldsWriter> {
-        FastFieldsWriter::from_schema_and_tokenizer_manager(schema, TokenizerManager::new())
+    pub fn from_schema(schema: &Schema) -> crate::Result<Self> {
+        Self::from_schema_and_tokenizer_manager(schema, TokenizerManager::new())
     }
 
     /// Create all `FastFieldWriter` required by the schema.
     pub fn from_schema_and_tokenizer_manager(
         schema: &Schema,
         tokenizer_manager: TokenizerManager,
-    ) -> crate::Result<FastFieldsWriter> {
+    ) -> crate::Result<Self> {
         let mut columnar_writer = ColumnarWriter::default();
 
         let mut fast_field_names: Vec<Option<String>> = vec![None; schema.num_fields()];
@@ -98,6 +100,7 @@ impl FastFieldsWriter {
             date_precisions,
             expand_dots,
             json_path_buffer: String::new(),
+            phantom: PhantomData,
         })
     }
 
@@ -117,12 +120,15 @@ impl FastFieldsWriter {
     }
 
     /// Indexes all of the fastfields of a new document.
-    pub fn add_document(&mut self, doc: &Document) -> crate::Result<()> {
+    pub fn add_document(&mut self, doc: &D) -> crate::Result<()> {
         let doc_id = self.num_docs;
-        for field_value in doc.field_values() {
+        for (field, value) in doc.iter_fields_and_values() {
+            let value = value as D::Value<'_>;
+
             if let Some(field_name) =
-                &self.fast_field_names[field_value.field().field_id() as usize]
+                &self.fast_field_names[field.field_id() as usize]
             {
+                // TODO: Fix
                 match &field_value.value {
                     Value::U64(u64_val) => {
                         self.columnar_writer.record_numerical(
@@ -147,7 +153,7 @@ impl FastFieldsWriter {
                     }
                     Value::Str(text_val) => {
                         if let Some(tokenizer) =
-                            &self.per_field_tokenizer[field_value.field().field_id() as usize]
+                            &self.per_field_tokenizer[field.field_id() as usize]
                         {
                             let mut token_stream = tokenizer.token_stream(text_val);
                             token_stream.process(&mut |token: &Token| {
@@ -181,7 +187,7 @@ impl FastFieldsWriter {
                     }
                     Value::Date(datetime) => {
                         let date_precision =
-                            self.date_precisions[field_value.field().field_id() as usize];
+                            self.date_precisions[field.field_id() as usize];
                         let truncated_datetime = datetime.truncate(date_precision);
                         self.columnar_writer.record_datetime(
                             doc_id,
@@ -197,12 +203,12 @@ impl FastFieldsWriter {
                         );
                     }
                     Value::JsonObject(json_obj) => {
-                        let expand_dots = self.expand_dots[field_value.field().field_id() as usize];
+                        let expand_dots = self.expand_dots[field.field_id() as usize];
                         self.json_path_buffer.clear();
                         self.json_path_buffer.push_str(field_name);
 
                         let text_analyzer =
-                            &self.per_field_tokenizer[field_value.field().field_id() as usize];
+                            &self.per_field_tokenizer[field.field_id() as usize];
 
                         record_json_obj_to_columnar_writer(
                             doc_id,

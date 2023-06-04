@@ -4,16 +4,17 @@ use std::sync::{Arc, Mutex, Weak};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crate::{Executor, Inventory, Searcher, SearcherGeneration, TantivyError};
+use crate::{Document, Executor, Inventory, Searcher, SearcherGeneration, TantivyError};
+use crate::schema::DocumentAccess;
 
 pub const GC_INTERVAL: Duration = Duration::from_secs(1);
 
 /// `Warmer` can be used to maintain segment-level state e.g. caches.
 ///
 /// They must be registered with the [`IndexReaderBuilder`](super::IndexReaderBuilder).
-pub trait Warmer: Sync + Send {
+pub trait Warmer<D: DocumentAccess = Document>: Sync + Send {
     /// Perform any warming work using the provided [`Searcher`].
-    fn warm(&self, searcher: &Searcher) -> crate::Result<()>;
+    fn warm(&self, searcher: &Searcher<D>) -> crate::Result<()>;
 
     /// Discards internal state for any [`SearcherGeneration`] not provided.
     fn garbage_collect(&self, live_generations: &[&SearcherGeneration]);
@@ -21,12 +22,12 @@ pub trait Warmer: Sync + Send {
 
 /// Warming-related state with interior mutability.
 #[derive(Clone)]
-pub(crate) struct WarmingState(Arc<Mutex<WarmingStateInner>>);
+pub(crate) struct WarmingState<D: DocumentAccess = Document>(Arc<Mutex<WarmingStateInner<D>>>);
 
-impl WarmingState {
+impl<D: DocumentAccess> WarmingState<D> {
     pub fn new(
         num_warming_threads: usize,
-        warmers: Vec<Weak<dyn Warmer>>,
+        warmers: Vec<Weak<dyn Warmer<D>>>,
         searcher_generation_inventory: Inventory<SearcherGeneration>,
     ) -> crate::Result<Self> {
         Ok(Self(Arc::new(Mutex::new(WarmingStateInner {
@@ -43,7 +44,7 @@ impl WarmingState {
     ///
     /// A background GC thread for [`Warmer::garbage_collect`] calls is uniquely created if there
     /// are active warmers.
-    pub fn warm_new_searcher_generation(&self, searcher: &Searcher) -> crate::Result<()> {
+    pub fn warm_new_searcher_generation(&self, searcher: &Searcher<D>) -> crate::Result<()> {
         self.0
             .lock()
             .unwrap()
@@ -56,9 +57,9 @@ impl WarmingState {
     }
 }
 
-struct WarmingStateInner {
+struct WarmingStateInner<D: DocumentAccess> {
     num_warming_threads: usize,
-    warmers: Vec<Weak<dyn Warmer>>,
+    warmers: Vec<Weak<dyn Warmer<D>>>,
     gc_thread: Option<JoinHandle<()>>,
     // Contains all generations that have been warmed up.
     // This list is used to avoid triggers the individual Warmer GCs
@@ -67,14 +68,14 @@ struct WarmingStateInner {
     searcher_generation_inventory: Inventory<SearcherGeneration>,
 }
 
-impl WarmingStateInner {
+impl<D: DocumentAccess> WarmingStateInner<D> {
     /// Start tracking provided searcher as an exemplar of a new generation.
     /// If there are active warmers, warm them with the provided searcher, and kick background GC
     /// thread if it has not yet been kicked. Otherwise, prune state for dropped searcher
     /// generations inline.
     fn warm_new_searcher_generation(
         &mut self,
-        searcher: &Searcher,
+        searcher: &Searcher<D>,
         this: &Arc<Mutex<Self>>,
     ) -> crate::Result<()> {
         let warmers = self.pruned_warmers();
@@ -92,7 +93,7 @@ impl WarmingStateInner {
 
     /// Attempt to upgrade the weak `Warmer` references, pruning those which cannot be upgraded.
     /// Return the strong references.
-    fn pruned_warmers(&mut self) -> Vec<Arc<dyn Warmer>> {
+    fn pruned_warmers(&mut self) -> Vec<Arc<dyn Warmer<D>>> {
         let strong_warmers = self
             .warmers
             .iter()
@@ -146,7 +147,7 @@ impl WarmingStateInner {
 
     /// Every [`GC_INTERVAL`] attempt to GC, with panics caught and logged using
     /// [`std::panic::catch_unwind`].
-    fn gc_loop(inner: Weak<Mutex<WarmingStateInner>>) {
+    fn gc_loop(inner: Weak<Mutex<WarmingStateInner<D>>>) {
         for _ in crossbeam_channel::tick(GC_INTERVAL) {
             if let Some(inner) = inner.upgrade() {
                 // rely on deterministic gc in tests

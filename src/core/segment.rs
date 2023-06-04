@@ -5,30 +5,44 @@ use super::SegmentComponent;
 use crate::core::{Index, SegmentId, SegmentMeta};
 use crate::directory::error::{OpenReadError, OpenWriteError};
 use crate::directory::{Directory, FileSlice, WritePtr};
-use crate::schema::Schema;
-use crate::Opstamp;
+use crate::schema::{DocumentAccess, Schema};
+use crate::{Document, Opstamp};
 
 /// A segment is a piece of the index.
-#[derive(Clone)]
-pub struct Segment {
-    index: Index,
+pub struct Segment<D = Document> {
+    index: Index<D>,
     meta: SegmentMeta,
 }
 
-impl fmt::Debug for Segment {
+impl<D> fmt::Debug for Segment<D>
+where
+    D: DocumentAccess
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Segment({:?})", self.id().uuid_string())
     }
 }
 
-impl Segment {
+impl<D> Clone for Segment<D> {
+    fn clone(&self) -> Self {
+        Self {
+            index: self.index.clone(),
+            meta: self.meta.clone(),
+        }
+    }
+}
+
+impl<D> Segment<D>
+where
+    D: DocumentAccess
+{
     /// Creates a new segment given an `Index` and a `SegmentId`
-    pub(crate) fn for_index(index: Index, meta: SegmentMeta) -> Segment {
-        Segment { index, meta }
+    pub(crate) fn for_index(index: Index<D>, meta: SegmentMeta) -> Self {
+        Self { index, meta }
     }
 
     /// Returns the index the segment belongs to.
-    pub fn index(&self) -> &Index {
+    pub fn index(&self) -> &Index<D> {
         &self.index
     }
 
@@ -46,7 +60,7 @@ impl Segment {
     ///
     /// This method is only used when updating `max_doc` from 0
     /// as we finalize a fresh new segment.
-    pub(crate) fn with_max_doc(self, max_doc: u32) -> Segment {
+    pub(crate) fn with_max_doc(self, max_doc: u32) -> Self {
         Segment {
             index: self.index,
             meta: self.meta.with_max_doc(max_doc),
@@ -55,7 +69,7 @@ impl Segment {
 
     #[doc(hidden)]
     #[must_use]
-    pub fn with_delete_meta(self, num_deleted_docs: u32, opstamp: Opstamp) -> Segment {
+    pub fn with_delete_meta(self, num_deleted_docs: u32, opstamp: Opstamp) -> Self {
         Segment {
             index: self.index,
             meta: self.meta.with_delete_meta(num_deleted_docs, opstamp),

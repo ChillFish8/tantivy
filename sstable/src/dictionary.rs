@@ -5,7 +5,7 @@ use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
 
 use common::file_slice::FileSlice;
-use common::{BinarySerializable, OwnedBytes};
+use common::{BinaryDeserializable, OwnedBytes};
 use tantivy_fst::automaton::AlwaysMatch;
 use tantivy_fst::Automaton;
 

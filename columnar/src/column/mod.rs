@@ -6,7 +6,7 @@ use std::io::Write;
 use std::ops::{Deref, Range, RangeInclusive};
 use std::sync::Arc;
 
-use common::BinarySerializable;
+use common::{BinaryDeserializable, BinarySerializable};
 pub use dictionary_encoded::{BytesColumn, StrColumn};
 pub use serialize::{
     open_column_bytes, open_column_str, open_column_u128, open_column_u64,
@@ -159,7 +159,9 @@ impl BinarySerializable for Cardinality {
     fn serialize<W: Write + ?Sized>(&self, writer: &mut W) -> std::io::Result<()> {
         self.to_code().serialize(writer)
     }
+}
 
+impl BinaryDeserializable for Cardinality {
     fn deserialize<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
         let cardinality_code = u8::deserialize(reader)?;
         let cardinality = Cardinality::try_from_code(cardinality_code)?;

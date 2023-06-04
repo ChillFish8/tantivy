@@ -1,6 +1,6 @@
 use std::io;
 
-use common::{BinarySerializable, FixedSize, HasLen};
+use common::{BinaryDeserializable, BinarySerializable, FixedSize, HasLen};
 
 use super::{Decompressor, DOC_STORE_VERSION};
 use crate::directory::FileSlice;
@@ -23,7 +23,9 @@ impl BinarySerializable for DocStoreFooter {
         writer.write_all(&[0; 15])?;
         Ok(())
     }
+}
 
+impl BinaryDeserializable for DocStoreFooter {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let doc_store_version = u32::deserialize(reader)?;
         if doc_store_version != DOC_STORE_VERSION {

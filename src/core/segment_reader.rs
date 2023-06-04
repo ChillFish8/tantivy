@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::{fmt, io};
+use std::marker::PhantomData;
 
 use fail::fail_point;
 
@@ -9,11 +10,11 @@ use crate::directory::{CompositeFile, FileSlice};
 use crate::error::DataCorruption;
 use crate::fastfield::{intersect_alive_bitsets, AliveBitSet, FacetReader, FastFieldReaders};
 use crate::fieldnorm::{FieldNormReader, FieldNormReaders};
-use crate::schema::{Field, IndexRecordOption, Schema, Type};
+use crate::schema::{DocumentAccess, Field, IndexRecordOption, Schema, Type};
 use crate::space_usage::SegmentSpaceUsage;
 use crate::store::StoreReader;
 use crate::termdict::TermDictionary;
-use crate::{DocId, Opstamp};
+use crate::{DocId, Document, Opstamp};
 
 /// Entry point to access all of the datastructures of the `Segment`
 ///
@@ -26,7 +27,7 @@ use crate::{DocId, Opstamp};
 /// The segment reader has a very low memory footprint,
 /// as close to all of the memory data is mmapped.
 #[derive(Clone)]
-pub struct SegmentReader {
+pub struct SegmentReader<D = Document> {
     inv_idx_reader_cache: Arc<RwLock<HashMap<Field, Arc<InvertedIndexReader>>>>,
 
     segment_id: SegmentId,
@@ -44,9 +45,13 @@ pub struct SegmentReader {
     store_file: FileSlice,
     alive_bitset_opt: Option<AliveBitSet>,
     schema: Schema,
+    phantom: PhantomData<D>,
 }
 
-impl SegmentReader {
+impl<D> SegmentReader<D>
+where
+    D: DocumentAccess
+{
     /// Returns the highest document id ever attributed in
     /// this segment + 1.
     pub fn max_doc(&self) -> DocId {
@@ -132,20 +137,20 @@ impl SegmentReader {
     ///
     /// `cache_num_blocks` sets the number of decompressed blocks to be cached in an LRU.
     /// The size of blocks is configurable, this should be reflexted in the
-    pub fn get_store_reader(&self, cache_num_blocks: usize) -> io::Result<StoreReader> {
+    pub fn get_store_reader(&self, cache_num_blocks: usize) -> io::Result<StoreReader<D>> {
         StoreReader::open(self.store_file.clone(), cache_num_blocks)
     }
 
     /// Open a new segment for reading.
-    pub fn open(segment: &Segment) -> crate::Result<SegmentReader> {
+    pub fn open(segment: &Segment<D>) -> crate::Result<Self> {
         Self::open_with_custom_alive_set(segment, None)
     }
 
     /// Open a new segment for reading.
     pub fn open_with_custom_alive_set(
-        segment: &Segment,
+        segment: &Segment<D>,
         custom_bitset: Option<AliveBitSet>,
-    ) -> crate::Result<SegmentReader> {
+    ) -> crate::Result<Self> {
         let termdict_file = segment.open_read(SegmentComponent::Terms)?;
         let termdict_composite = CompositeFile::open(&termdict_file)?;
 
@@ -201,6 +206,7 @@ impl SegmentReader {
             alive_bitset_opt,
             positions_composite,
             schema,
+            phantom: PhantomData,
         })
     }
 

@@ -5,7 +5,7 @@ use std::{io, u64, usize};
 
 use crate::collector::{Collector, SegmentCollector};
 use crate::fastfield::FacetReader;
-use crate::schema::Facet;
+use crate::schema::{DocumentAccess, Facet};
 use crate::{DocId, Score, SegmentOrdinal, SegmentReader};
 
 struct Hit<'a> {
@@ -242,7 +242,7 @@ fn compress_mapping(mapping: &[(u64, usize)]) -> (Vec<usize>, Vec<(u64, usize)>)
     (compressed_collapse_mapping, unique_facet_ords)
 }
 
-impl Collector for FacetCollector {
+impl<D: DocumentAccess> Collector<D> for FacetCollector {
     type Fruit = FacetCounts;
 
     type Child = FacetSegmentCollector;
@@ -250,7 +250,7 @@ impl Collector for FacetCollector {
     fn for_segment(
         &self,
         _: SegmentOrdinal,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
     ) -> crate::Result<FacetSegmentCollector> {
         let facet_reader = reader.facet_reader(&self.field_name)?;
         let facet_dict = facet_reader.facet_dict();

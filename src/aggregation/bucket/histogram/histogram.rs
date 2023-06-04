@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use std::fmt::Display;
+use std::fmt::{Debug, Display, Formatter};
 
 use columnar::ColumnType;
 use itertools::Itertools;
@@ -21,7 +21,8 @@ use crate::aggregation::segment_agg_result::{
     build_segment_agg_collector, AggregationLimits, SegmentAggregationCollector,
 };
 use crate::aggregation::{f64_from_fastfield_u64, format_date};
-use crate::TantivyError;
+use crate::schema::DocumentAccess;
+use crate::{Document, TantivyError};
 
 /// Histogram is a bucket aggregation, where buckets are created dynamically for given `interval`.
 /// Each document value is rounded down to its bucket.
@@ -201,10 +202,10 @@ pub(crate) struct SegmentHistogramBucketEntry {
 }
 
 impl SegmentHistogramBucketEntry {
-    pub(crate) fn into_intermediate_bucket_entry(
+    pub(crate) fn into_intermediate_bucket_entry<D: DocumentAccess>(
         self,
-        sub_aggregation: Option<Box<dyn SegmentAggregationCollector>>,
-        agg_with_accessor: &AggregationsWithAccessor,
+        sub_aggregation: Option<Box<dyn SegmentAggregationCollector<D>>>,
+        agg_with_accessor: &AggregationsWithAccessor<D>,
     ) -> crate::Result<IntermediateHistogramBucketEntry> {
         let mut sub_aggregation_res = IntermediateAggregationResults::default();
         if let Some(sub_aggregation) = sub_aggregation {
@@ -221,12 +222,11 @@ impl SegmentHistogramBucketEntry {
 
 /// The collector puts values from the fast field into the correct buckets and does a conversion to
 /// the correct datatype.
-#[derive(Clone, Debug)]
-pub struct SegmentHistogramCollector {
+pub struct SegmentHistogramCollector<D: DocumentAccess = Document> {
     /// The buckets containing the aggregation data.
     buckets: FxHashMap<i64, SegmentHistogramBucketEntry>,
-    sub_aggregations: FxHashMap<i64, Box<dyn SegmentAggregationCollector>>,
-    sub_aggregation_blueprint: Option<Box<dyn SegmentAggregationCollector>>,
+    sub_aggregations: FxHashMap<i64, Box<dyn SegmentAggregationCollector<D>>>,
+    sub_aggregation_blueprint: Option<Box<dyn SegmentAggregationCollector<D>>>,
     column_type: ColumnType,
     interval: f64,
     offset: f64,
@@ -234,10 +234,43 @@ pub struct SegmentHistogramCollector {
     accessor_idx: usize,
 }
 
-impl SegmentAggregationCollector for SegmentHistogramCollector {
+impl<D: DocumentAccess> Debug for SegmentHistogramCollector<D> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SegmentHistogramCollector")
+            .field("buckets", &self.buckets)
+            .field("sub_aggregations", &self.sub_aggregations)
+            .field("sub_aggregation_blueprint", &self.sub_aggregation_blueprint)
+            .field("column_type", &self.column_type)
+            .field("interval", &self.interval)
+            .field("offset", &self.offset)
+            .field("bounds", &self.bounds)
+            .field("accessor_idx", &self.accessor_idx)
+            .finish()
+    }
+}
+
+impl<D: DocumentAccess> Clone for SegmentHistogramCollector<D> {
+    fn clone(&self) -> Self {
+        Self {
+            buckets: self.buckets.clone(),
+            sub_aggregations: self.sub_aggregations.clone(),
+            sub_aggregation_blueprint: self.sub_aggregation_blueprint.clone(),
+            column_type: self.column_type.clone(),
+            interval: self.interval,
+            offset: self.offset,
+            bounds: self.bounds.clone(),
+            accessor_idx: self.accessor_idx,
+        }
+    }
+}
+
+impl<D> SegmentAggregationCollector<D> for SegmentHistogramCollector<D> 
+where 
+    D: DocumentAccess
+{
     fn add_intermediate_aggregation_result(
         self: Box<Self>,
-        agg_with_accessor: &AggregationsWithAccessor,
+        agg_with_accessor: &AggregationsWithAccessor<D>,
         results: &mut IntermediateAggregationResults,
     ) -> crate::Result<()> {
         let name = agg_with_accessor.aggs.keys[self.accessor_idx].to_string();
@@ -253,7 +286,7 @@ impl SegmentAggregationCollector for SegmentHistogramCollector {
     fn collect(
         &mut self,
         doc: crate::DocId,
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         self.collect_block(&[doc], agg_with_accessor)
     }
@@ -262,7 +295,7 @@ impl SegmentAggregationCollector for SegmentHistogramCollector {
     fn collect_block(
         &mut self,
         docs: &[crate::DocId],
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         let bucket_agg_accessor = &mut agg_with_accessor.aggs.values[self.accessor_idx];
 
@@ -305,7 +338,7 @@ impl SegmentAggregationCollector for SegmentHistogramCollector {
         Ok(())
     }
 
-    fn flush(&mut self, agg_with_accessor: &mut AggregationsWithAccessor) -> crate::Result<()> {
+    fn flush(&mut self, agg_with_accessor: &mut AggregationsWithAccessor<D>) -> crate::Result<()> {
         let sub_aggregation_accessor =
             &mut agg_with_accessor.aggs.values[self.accessor_idx].sub_aggregation;
 
@@ -317,7 +350,7 @@ impl SegmentAggregationCollector for SegmentHistogramCollector {
     }
 }
 
-impl SegmentHistogramCollector {
+impl<D: DocumentAccess> SegmentHistogramCollector<D> {
     fn get_memory_consumption(&self) -> usize {
         let self_mem = std::mem::size_of::<Self>();
         let sub_aggs_mem = self.sub_aggregations.memory_consumption();
@@ -326,7 +359,7 @@ impl SegmentHistogramCollector {
     }
     pub fn into_intermediate_bucket_result(
         self,
-        agg_with_accessor: &AggregationWithAccessor,
+        agg_with_accessor: &AggregationWithAccessor<D>,
     ) -> crate::Result<IntermediateBucketResult> {
         let mut buckets = Vec::with_capacity(self.buckets.len());
 
@@ -348,7 +381,7 @@ impl SegmentHistogramCollector {
 
     pub(crate) fn from_req_and_validate(
         mut req: HistogramAggregation,
-        sub_aggregation: &mut AggregationsWithAccessor,
+        sub_aggregation: &mut AggregationsWithAccessor<D>,
         field_type: ColumnType,
         accessor_idx: usize,
     ) -> crate::Result<Self> {

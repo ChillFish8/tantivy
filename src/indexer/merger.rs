@@ -17,21 +17,18 @@ use crate::fieldnorm::{FieldNormReader, FieldNormReaders, FieldNormsSerializer, 
 use crate::indexer::doc_id_mapping::{MappingType, SegmentDocIdMapping};
 use crate::indexer::SegmentSerializer;
 use crate::postings::{InvertedIndexSerializer, Postings, SegmentPostings};
-use crate::schema::{value_type_to_column_type, Field, FieldType, Schema};
+use crate::schema::{value_type_to_column_type, Field, FieldType, Schema, DocumentAccess};
 use crate::store::StoreWriter;
 use crate::termdict::{TermMerger, TermOrdinal};
-use crate::{
-    DocAddress, DocId, IndexSettings, IndexSortByField, InvertedIndexReader, Order,
-    SegmentComponent, SegmentOrdinal,
-};
+use crate::{DocAddress, DocId, Document, IndexSettings, IndexSortByField, InvertedIndexReader, Order, SegmentComponent, SegmentOrdinal};
 
 /// Segment's max doc must be `< MAX_DOC_LIMIT`.
 ///
 /// We do not allow segments with more than
 pub const MAX_DOC_LIMIT: u32 = 1 << 31;
 
-fn estimate_total_num_tokens_in_single_segment(
-    reader: &SegmentReader,
+fn estimate_total_num_tokens_in_single_segment<D: DocumentAccess>(
+    reader: &SegmentReader<D>,
     field: Field,
 ) -> crate::Result<u64> {
     // There are no deletes. We can simply use the exact value saved into the posting list.
@@ -72,7 +69,7 @@ fn estimate_total_num_tokens_in_single_segment(
     Ok((segment_num_tokens as f64 * ratio) as u64)
 }
 
-fn estimate_total_num_tokens(readers: &[SegmentReader], field: Field) -> crate::Result<u64> {
+fn estimate_total_num_tokens<D: DocumentAccess>(readers: &[SegmentReader<D>], field: Field) -> crate::Result<u64> {
     let mut total_num_tokens: u64 = 0;
     for reader in readers {
         total_num_tokens += estimate_total_num_tokens_in_single_segment(reader, field)?;
@@ -80,10 +77,10 @@ fn estimate_total_num_tokens(readers: &[SegmentReader], field: Field) -> crate::
     Ok(total_num_tokens)
 }
 
-pub struct IndexMerger {
+pub struct IndexMerger<D: DocumentAccess = Document> {
     index_settings: IndexSettings,
     schema: Schema,
-    pub(crate) readers: Vec<SegmentReader>,
+    pub(crate) readers: Vec<SegmentReader<D>>,
     max_doc: u32,
 }
 
@@ -149,12 +146,12 @@ fn extract_fast_field_required_columns(schema: &Schema) -> Vec<(String, ColumnTy
         .collect()
 }
 
-impl IndexMerger {
+impl<D: DocumentAccess> IndexMerger<D> {
     pub fn open(
         schema: Schema,
         index_settings: IndexSettings,
-        segments: &[Segment],
-    ) -> crate::Result<IndexMerger> {
+        segments: &[Segment<D>],
+    ) -> crate::Result<Self> {
         let alive_bitset = segments.iter().map(|_| None).collect_vec();
         Self::open_with_custom_alive_set(schema, index_settings, segments, alive_bitset)
     }
@@ -174,9 +171,9 @@ impl IndexMerger {
     pub fn open_with_custom_alive_set(
         schema: Schema,
         index_settings: IndexSettings,
-        segments: &[Segment],
+        segments: &[Segment<D>],
         alive_bitset_opt: Vec<Option<AliveBitSet>>,
-    ) -> crate::Result<IndexMerger> {
+    ) -> crate::Result<Self> {
         let mut readers = vec![];
         for (segment, new_alive_bitset_opt) in segments.iter().zip(alive_bitset_opt.into_iter()) {
             if segment.meta().num_docs() > 0 {
@@ -198,7 +195,7 @@ impl IndexMerger {
             );
             return Err(crate::TantivyError::InvalidArgument(err_msg));
         }
-        Ok(IndexMerger {
+        Ok(Self {
             index_settings,
             schema,
             readers,
@@ -207,9 +204,9 @@ impl IndexMerger {
     }
 
     fn sort_readers_by_min_sort_field(
-        readers: Vec<SegmentReader>,
+        readers: Vec<SegmentReader<D>>,
         sort_by_field: &IndexSortByField,
-    ) -> crate::Result<Vec<SegmentReader>> {
+    ) -> crate::Result<Vec<SegmentReader<D>>> {
         // presort the readers by their min_values, so that when they are disjunct, we can use
         // the regular merge logic (implicitly sorted)
         let mut readers_with_min_sort_values = readers
@@ -301,7 +298,7 @@ impl IndexMerger {
     }
 
     pub(crate) fn get_sort_field_accessor(
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
         sort_by_field: &IndexSortByField,
     ) -> crate::Result<Arc<dyn ColumnValues>> {
         reader.schema().get_field(&sort_by_field.field)?;
@@ -630,7 +627,7 @@ impl IndexMerger {
 
     fn write_storable_fields(
         &self,
-        store_writer: &mut StoreWriter,
+        store_writer: &mut StoreWriter<D>,
         doc_id_mapping: &SegmentDocIdMapping,
     ) -> crate::Result<()> {
         debug_time!("write-storable-fields");
@@ -702,7 +699,7 @@ impl IndexMerger {
     ///
     /// # Returns
     /// The number of documents in the resulting segment.
-    pub fn write(&self, mut serializer: SegmentSerializer) -> crate::Result<u32> {
+    pub fn write(&self, mut serializer: SegmentSerializer<D>) -> crate::Result<u32> {
         let doc_id_mapping = if let Some(sort_by_field) = self.index_settings.sort_by_field.as_ref()
         {
             // If the documents are already sorted and stackable, we ignore the mapping and execute
@@ -867,27 +864,27 @@ mod tests {
             }
             {
                 let doc = searcher.doc(DocAddress::new(0, 0))?;
-                assert_eq!(doc.get_first(text_field).unwrap().as_text(), Some("af b"));
+                assert_eq!(doc.get_first(text_field).unwrap().as_str(), Some("af b"));
             }
             {
                 let doc = searcher.doc(DocAddress::new(0, 1))?;
-                assert_eq!(doc.get_first(text_field).unwrap().as_text(), Some("a b c"));
+                assert_eq!(doc.get_first(text_field).unwrap().as_str(), Some("a b c"));
             }
             {
                 let doc = searcher.doc(DocAddress::new(0, 2))?;
                 assert_eq!(
-                    doc.get_first(text_field).unwrap().as_text(),
+                    doc.get_first(text_field).unwrap().as_str(),
                     Some("a b c d")
                 );
             }
             {
                 let doc = searcher.doc(DocAddress::new(0, 3))?;
-                assert_eq!(doc.get_first(text_field).unwrap().as_text(), Some("af b"));
+                assert_eq!(doc.get_first(text_field).unwrap().as_str(), Some("af b"));
             }
             {
                 let doc = searcher.doc(DocAddress::new(0, 4))?;
                 assert_eq!(
-                    doc.get_first(text_field).unwrap().as_text(),
+                    doc.get_first(text_field).unwrap().as_str(),
                     Some("a b c g")
                 );
             }
@@ -1305,7 +1302,7 @@ mod tests {
                 |index_writer: &mut IndexWriter, doc_facets: &[&str], int_val: &mut u64| {
                     let mut doc = Document::default();
                     for facet in doc_facets {
-                        doc.add_facet(facet_field, Facet::from(facet));
+                        doc.add_facet(facet_field, Facet::from(facet.as_ref()));
                     }
                     doc.add_u64(int_field, *int_val);
                     *int_val += 1;

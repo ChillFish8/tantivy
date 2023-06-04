@@ -1,4 +1,4 @@
-use common::{BinarySerializable, VInt};
+use common::{BinaryDeserializable, VInt};
 
 use crate::directory::OwnedBytes;
 use crate::store::index::block::CheckpointBlock;

@@ -1,7 +1,7 @@
 use std::{fmt, io, mem};
 
 use common::file_slice::FileSlice;
-use common::BinarySerializable;
+use common::BinaryDeserializable;
 use sstable::{Dictionary, RangeSSTable};
 
 use crate::columnar::{format_version, ColumnType};

@@ -4,7 +4,7 @@ use std::io::{self, Read, Write};
 use std::str;
 use std::string::FromUtf8Error;
 
-use common::BinarySerializable;
+use common::{BinaryDeserializable, BinarySerializable};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::de::Error as _;
@@ -194,9 +194,11 @@ impl BinarySerializable for Facet {
     fn serialize<W: Write + ?Sized>(&self, writer: &mut W) -> io::Result<()> {
         <String as BinarySerializable>::serialize(&self.0, writer)
     }
+}
 
+impl BinaryDeserializable for Facet {
     fn deserialize<R: Read>(reader: &mut R) -> io::Result<Self> {
-        Ok(Facet(<String as BinarySerializable>::deserialize(reader)?))
+        Ok(Facet(<String as BinaryDeserializable>::deserialize(reader)?))
     }
 }
 

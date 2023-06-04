@@ -4,7 +4,7 @@
 use common::ReadOnlyBitSet;
 
 use super::SegmentWriter;
-use crate::schema::{Field, Schema};
+use crate::schema::{DocumentAccess, Field, Schema};
 use crate::{DocAddress, DocId, IndexSortByField, TantivyError};
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -135,9 +135,9 @@ pub(crate) fn expect_field_id_for_sort_field(
 
 // Generates a document mapping in the form of [index new doc_id] -> old doc_id
 // TODO detect if field is already sorted and discard mapping
-pub(crate) fn get_doc_id_mapping_from_field(
+pub(crate) fn get_doc_id_mapping_from_field<D: DocumentAccess>(
     sort_by_field: IndexSortByField,
-    segment_writer: &SegmentWriter,
+    segment_writer: &SegmentWriter<D>,
 ) -> crate::Result<DocIdMapping> {
     let schema = segment_writer.segment_serializer.segment().schema();
     expect_field_id_for_sort_field(&schema, &sort_by_field)?; // for now expect
@@ -314,7 +314,7 @@ mod tests_indexsorting {
                     .doc(DocAddress::new(0, 3))?
                     .get_first(my_string_field)
                     .unwrap()
-                    .as_text(),
+                    .as_str(),
                 Some("blublub")
             );
         }
@@ -337,7 +337,7 @@ mod tests_indexsorting {
                     .doc(DocAddress::new(0, 0))?
                     .get_first(my_string_field)
                     .unwrap()
-                    .as_text(),
+                    .as_str(),
                 Some("blublub")
             );
             let doc = searcher.doc(DocAddress::new(0, 4))?;
@@ -359,7 +359,7 @@ mod tests_indexsorting {
         {
             let doc = searcher.doc(DocAddress::new(0, 4))?;
             assert_eq!(
-                doc.get_first(my_string_field).unwrap().as_text(),
+                doc.get_first(my_string_field).unwrap().as_str(),
                 Some("blublub")
             );
         }

@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 use std::ops::Range;
 
 use columnar::{ColumnType, MonotonicallyMappableToU64};
@@ -17,6 +17,7 @@ use crate::aggregation::segment_agg_result::{
 use crate::aggregation::{
     f64_from_fastfield_u64, f64_to_fastfield_u64, format_date, Key, SerializedKey,
 };
+use crate::schema::DocumentAccess;
 use crate::TantivyError;
 
 /// Provide user-defined buckets to aggregate on.
@@ -115,27 +116,62 @@ impl From<Range<u64>> for InternalRangeAggregationRange {
     }
 }
 
-#[derive(Clone, Debug)]
-pub(crate) struct SegmentRangeAndBucketEntry {
+pub(crate) struct SegmentRangeAndBucketEntry<D: DocumentAccess> {
     range: Range<u64>,
-    bucket: SegmentRangeBucketEntry,
+    bucket: SegmentRangeBucketEntry<D>,
+}
+
+impl<D: DocumentAccess> Debug for SegmentRangeAndBucketEntry<D> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SegmentRangeAndBucketEntry")
+            .field("range", &self.range)
+            .field("bucket", &self.bucket)
+            .finish()
+    }
+}
+
+impl<D: DocumentAccess> Clone for SegmentRangeAndBucketEntry<D> {
+    fn clone(&self) -> Self {
+        Self {
+            range: self.range.clone(),
+            bucket: self.bucket.clone(),
+        }
+    }
 }
 
 /// The collector puts values from the fast field into the correct buckets and does a conversion to
 /// the correct datatype.
-#[derive(Clone, Debug)]
-pub struct SegmentRangeCollector {
+pub struct SegmentRangeCollector<D: DocumentAccess> {
     /// The buckets containing the aggregation data.
-    buckets: Vec<SegmentRangeAndBucketEntry>,
+    buckets: Vec<SegmentRangeAndBucketEntry<D>>,
     column_type: ColumnType,
     pub(crate) accessor_idx: usize,
 }
 
-#[derive(Clone)]
-pub(crate) struct SegmentRangeBucketEntry {
+impl<D: DocumentAccess> Clone for SegmentRangeCollector<D> {
+    fn clone(&self) -> Self {
+        Self {
+            buckets: self.buckets.clone(),
+            column_type: self.column_type.clone(),
+            accessor_idx: self.accessor_idx,
+        }
+    }
+}
+
+impl<D: DocumentAccess> Debug for SegmentRangeCollector<D> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SegmentRangeCollector")
+            .field("buckets", &self.buckets)
+            .field("column_type", &self.column_type)
+            .field("accessor_idx", &self.accessor_idx)
+            .finish()
+    }
+}
+
+pub(crate) struct SegmentRangeBucketEntry<D: DocumentAccess> {
     pub key: Key,
     pub doc_count: u64,
-    pub sub_aggregation: Option<Box<dyn SegmentAggregationCollector>>,
+    pub sub_aggregation: Option<Box<dyn SegmentAggregationCollector<D>>>,
     /// The from range of the bucket. Equals `f64::MIN` when `None`.
     pub from: Option<f64>,
     /// The to range of the bucket. Equals `f64::MAX` when `None`. Open interval, `to` is not
@@ -143,7 +179,19 @@ pub(crate) struct SegmentRangeBucketEntry {
     pub to: Option<f64>,
 }
 
-impl Debug for SegmentRangeBucketEntry {
+impl<D: DocumentAccess> Clone for SegmentRangeBucketEntry<D> {
+    fn clone(&self) -> Self {
+        Self {
+            key: self.key.clone(),
+            doc_count: self.doc_count,
+            sub_aggregation: self.sub_aggregation.clone(),
+            from: self.from,
+            to: self.to,
+        }
+    }
+}
+
+impl<D: DocumentAccess> Debug for SegmentRangeBucketEntry<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SegmentRangeBucketEntry")
             .field("key", &self.key)
@@ -153,10 +201,10 @@ impl Debug for SegmentRangeBucketEntry {
             .finish()
     }
 }
-impl SegmentRangeBucketEntry {
+impl<D: DocumentAccess> SegmentRangeBucketEntry<D> {
     pub(crate) fn into_intermediate_bucket_entry(
         self,
-        agg_with_accessor: &AggregationsWithAccessor,
+        agg_with_accessor: &AggregationsWithAccessor<D>,
     ) -> crate::Result<IntermediateRangeBucketEntry> {
         let mut sub_aggregation_res = IntermediateAggregationResults::default();
         if let Some(sub_aggregation) = self.sub_aggregation {
@@ -176,10 +224,13 @@ impl SegmentRangeBucketEntry {
     }
 }
 
-impl SegmentAggregationCollector for SegmentRangeCollector {
+impl<D> SegmentAggregationCollector<D> for SegmentRangeCollector<D>
+where
+    D: DocumentAccess
+{
     fn add_intermediate_aggregation_result(
         self: Box<Self>,
-        agg_with_accessor: &AggregationsWithAccessor,
+        agg_with_accessor: &AggregationsWithAccessor<D>,
         results: &mut IntermediateAggregationResults,
     ) -> crate::Result<()> {
         let field_type = self.column_type;
@@ -213,7 +264,7 @@ impl SegmentAggregationCollector for SegmentRangeCollector {
     fn collect(
         &mut self,
         doc: crate::DocId,
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         self.collect_block(&[doc], agg_with_accessor)
     }
@@ -222,7 +273,7 @@ impl SegmentAggregationCollector for SegmentRangeCollector {
     fn collect_block(
         &mut self,
         docs: &[crate::DocId],
-        agg_with_accessor: &mut AggregationsWithAccessor,
+        agg_with_accessor: &mut AggregationsWithAccessor<D>,
     ) -> crate::Result<()> {
         let bucket_agg_accessor = &mut agg_with_accessor.aggs.values[self.accessor_idx];
 
@@ -244,7 +295,7 @@ impl SegmentAggregationCollector for SegmentRangeCollector {
         Ok(())
     }
 
-    fn flush(&mut self, agg_with_accessor: &mut AggregationsWithAccessor) -> crate::Result<()> {
+    fn flush(&mut self, agg_with_accessor: &mut AggregationsWithAccessor<D>) -> crate::Result<()> {
         let sub_aggregation_accessor =
             &mut agg_with_accessor.aggs.values[self.accessor_idx].sub_aggregation;
 
@@ -258,10 +309,10 @@ impl SegmentAggregationCollector for SegmentRangeCollector {
     }
 }
 
-impl SegmentRangeCollector {
+impl<D: DocumentAccess> SegmentRangeCollector<D> {
     pub(crate) fn from_req_and_validate(
         req: &RangeAggregation,
-        sub_aggregation: &mut AggregationsWithAccessor,
+        sub_aggregation: &mut AggregationsWithAccessor<D>,
         limits: &mut ResourceLimitGuard,
         field_type: ColumnType,
         accessor_idx: usize,
@@ -307,7 +358,7 @@ impl SegmentRangeCollector {
             .collect::<crate::Result<_>>()?;
 
         limits.add_memory_consumed(
-            buckets.len() as u64 * std::mem::size_of::<SegmentRangeAndBucketEntry>() as u64,
+            buckets.len() as u64 * std::mem::size_of::<SegmentRangeAndBucketEntry<D>>() as u64,
         )?;
 
         Ok(SegmentRangeCollector {
@@ -452,10 +503,10 @@ mod tests {
     };
     use crate::aggregation::AggregationLimits;
 
-    pub fn get_collector_from_ranges(
+    pub fn get_collector_from_ranges<D: DocumentAccess>(
         ranges: Vec<RangeAggregationRange>,
         field_type: ColumnType,
-    ) -> SegmentRangeCollector {
+    ) -> SegmentRangeCollector<D> {
         let req = RangeAggregation {
             field: "dummy".to_string(),
             ranges,

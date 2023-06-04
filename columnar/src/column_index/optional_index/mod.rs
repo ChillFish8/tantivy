@@ -4,7 +4,7 @@ use std::sync::Arc;
 mod set;
 mod set_block;
 
-use common::{BinarySerializable, OwnedBytes, VInt};
+use common::{BinaryDeserializable, BinarySerializable, OwnedBytes, VInt};
 pub use set::{SelectCursor, Set, SetCodec};
 use set_block::{
     DenseBlock, DenseBlockCodec, SparseBlock, SparseBlockCodec, DENSE_BLOCK_NUM_BYTES,
@@ -342,7 +342,9 @@ impl BinarySerializable for OptionalIndexCodec {
     fn serialize<W: Write + ?Sized>(&self, writer: &mut W) -> io::Result<()> {
         writer.write_all(&[self.to_code()])
     }
+}
 
+impl BinaryDeserializable for OptionalIndexCodec {
     fn deserialize<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         let optional_codec_code = u8::deserialize(reader)?;
         let optional_codec = Self::try_from_code(optional_codec_code)?;

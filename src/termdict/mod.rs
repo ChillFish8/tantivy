@@ -38,7 +38,7 @@ pub type TermOrdinal = u64;
 use std::io;
 
 use common::file_slice::FileSlice;
-use common::BinarySerializable;
+use common::{BinaryDeserializable, BinarySerializable};
 use tantivy_fst::Automaton;
 
 use self::termdict::{

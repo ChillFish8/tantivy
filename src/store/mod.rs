@@ -254,7 +254,7 @@ pub mod tests {
         let store = reader.get_store_reader(10)?;
         for doc in store.iter(reader.alive_bitset()) {
             assert_eq!(
-                *doc?.get_first(text_field).unwrap().as_text().unwrap(),
+                *doc?.get_first(text_field).unwrap().as_str().unwrap(),
                 "deletemenot".to_string()
             );
         }
@@ -312,7 +312,7 @@ pub mod tests {
 
         for doc in store.iter(reader.alive_bitset()).take(50) {
             assert_eq!(
-                *doc?.get_first(text_field).unwrap().as_text().unwrap(),
+                *doc?.get_first(text_field).unwrap().as_str().unwrap(),
                 LOREM.to_string()
             );
         }

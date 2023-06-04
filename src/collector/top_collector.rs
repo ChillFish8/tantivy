@@ -3,6 +3,7 @@ use std::collections::BinaryHeap;
 use std::marker::PhantomData;
 
 use crate::{DocAddress, DocId, SegmentOrdinal, SegmentReader};
+use crate::schema::DocumentAccess;
 
 /// Contains a feature (field, score, etc.) of a document along with the document address.
 ///
@@ -53,25 +54,29 @@ impl<T: PartialOrd, D: PartialOrd> PartialEq for ComparableDoc<T, D> {
 
 impl<T: PartialOrd, D: PartialOrd> Eq for ComparableDoc<T, D> {}
 
-pub(crate) struct TopCollector<T> {
+pub(crate) struct TopCollector<D, T> {
     pub limit: usize,
     pub offset: usize,
     _marker: PhantomData<T>,
+    _phantom: PhantomData<D>,
 }
 
-impl<T> TopCollector<T>
-where T: PartialOrd + Clone
+impl<D, T> TopCollector<D, T>
+where
+    D: DocumentAccess,
+    T: PartialOrd + Clone,
 {
     /// Creates a top collector, with a number of documents equal to "limit".
     ///
     /// # Panics
     /// The method panics if limit is 0
-    pub fn with_limit(limit: usize) -> TopCollector<T> {
+    pub fn with_limit(limit: usize) -> Self {
         assert!(limit >= 1, "Limit must be strictly greater than 0.");
         Self {
             limit,
             offset: 0,
             _marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -79,7 +84,7 @@ where T: PartialOrd + Clone
     ///
     /// This is equivalent to `OFFSET` in MySQL or PostgreSQL and `start` in
     /// Lucene's TopDocsCollector.
-    pub fn and_offset(mut self, offset: usize) -> TopCollector<T> {
+    pub fn and_offset(mut self, offset: usize) -> Self {
         self.offset = offset;
         self
     }
@@ -114,7 +119,7 @@ where T: PartialOrd + Clone
     pub(crate) fn for_segment<F: PartialOrd>(
         &self,
         segment_id: SegmentOrdinal,
-        _: &SegmentReader,
+        _: &SegmentReader<D>,
     ) -> TopSegmentCollector<F> {
         TopSegmentCollector::new(segment_id, self.limit + self.offset)
     }
@@ -124,11 +129,12 @@ where T: PartialOrd + Clone
     /// Ideally we would use Into but the blanket implementation seems to cause the Scorer traits
     /// to fail.
     #[doc(hidden)]
-    pub(crate) fn into_tscore<TScore: PartialOrd + Clone>(self) -> TopCollector<TScore> {
+    pub(crate) fn into_tscore<TScore: PartialOrd + Clone>(self) -> TopCollector<D, TScore> {
         TopCollector {
             limit: self.limit,
             offset: self.offset,
             _marker: PhantomData,
+            _phantom: PhantomData,
         }
     }
 }

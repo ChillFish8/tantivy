@@ -1,5 +1,6 @@
 use std::io;
 use std::io::{Read, Write};
+use crate::serialize::BinaryDeserializable;
 
 use super::BinarySerializable;
 
@@ -27,7 +28,9 @@ impl BinarySerializable for VIntU128 {
         serialize_vint_u128(self.0, &mut buffer);
         writer.write_all(&buffer)
     }
+}
 
+impl BinaryDeserializable for VIntU128 {
     fn deserialize<R: Read>(reader: &mut R) -> io::Result<Self> {
         let mut bytes = reader.bytes();
         let mut result = 0u128;
@@ -151,7 +154,7 @@ pub fn read_u32_vint_no_advance(data: &[u8]) -> (u32, usize) {
     (result, vlen)
 }
 /// Write a `u32` as a vint payload.
-pub fn write_u32_vint<W: io::Write>(val: u32, writer: &mut W) -> io::Result<()> {
+pub fn write_u32_vint<W: Write>(val: u32, writer: &mut W) -> io::Result<()> {
     let mut buf = [0u8; 8];
     let data = serialize_vint_u32(val, &mut buf);
     writer.write_all(data)
@@ -194,7 +197,9 @@ impl BinarySerializable for VInt {
         let num_bytes = self.serialize_into(&mut buffer);
         writer.write_all(&buffer[0..num_bytes])
     }
+}
 
+impl BinaryDeserializable for VInt {
     fn deserialize<R: Read>(reader: &mut R) -> io::Result<Self> {
         let mut bytes = reader.bytes();
         let mut result = 0u64;
@@ -222,7 +227,7 @@ impl BinarySerializable for VInt {
 #[cfg(test)]
 mod tests {
 
-    use super::{serialize_vint_u32, BinarySerializable, VInt};
+    use super::{serialize_vint_u32, BinaryDeserializable, VInt};
 
     fn aux_test_vint(val: u64) {
         let mut v = [14u8; 10];

@@ -14,20 +14,25 @@ use crate::collector::{
 };
 use crate::fastfield::{FastFieldNotAvailableError, FastValue};
 use crate::query::Weight;
-use crate::{DocAddress, DocId, Score, SegmentOrdinal, SegmentReader, TantivyError};
+use crate::{DocAddress, DocId, Document, Score, SegmentOrdinal, SegmentReader, TantivyError};
+use crate::schema::DocumentAccess;
 
-struct FastFieldConvertCollector<
-    TCollector: Collector<Fruit = Vec<(u64, DocAddress)>>,
+struct FastFieldConvertCollector<D, TCollector, TFastValue>
+where
+    D: DocumentAccess,
+    TCollector: Collector<D, Fruit = Vec<(u64, DocAddress)>>,
     TFastValue: FastValue,
-> {
+{
     pub collector: TCollector,
     pub field: String,
-    pub fast_value: std::marker::PhantomData<TFastValue>,
+    pub fast_value: PhantomData<TFastValue>,
+    pub phantom: PhantomData<D>,
 }
 
-impl<TCollector, TFastValue> Collector for FastFieldConvertCollector<TCollector, TFastValue>
+impl<D, TCollector, TFastValue> Collector<D> for FastFieldConvertCollector<D, TCollector, TFastValue>
 where
-    TCollector: Collector<Fruit = Vec<(u64, DocAddress)>>,
+    D: DocumentAccess,
+    TCollector: Collector<D, Fruit = Vec<(u64, DocAddress)>>,
     TFastValue: FastValue,
 {
     type Fruit = Vec<(TFastValue, DocAddress)>;
@@ -37,7 +42,7 @@ where
     fn for_segment(
         &self,
         segment_local_id: crate::SegmentOrdinal,
-        segment: &SegmentReader,
+        segment: &SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
         let schema = segment.schema();
         let field = schema.get_field(&self.field)?;
@@ -117,14 +122,17 @@ where
 /// # Ok(())
 /// # }
 /// ```
-pub struct TopDocs(TopCollector<Score>);
+pub struct TopDocs<D = Document>{
+    inner: TopCollector<D, Score>,
+    phantom: PhantomData<D>,
+}
 
-impl fmt::Debug for TopDocs {
+impl<D> fmt::Debug for TopDocs<D> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "TopDocs(limit={}, offset={})",
-            self.0.limit, self.0.offset
+            self.inner.limit, self.inner.offset
         )
     }
 }
@@ -143,10 +151,10 @@ struct ScorerByField {
     field: String,
 }
 
-impl CustomScorer<u64> for ScorerByField {
+impl<D: DocumentAccess> CustomScorer<D, u64> for ScorerByField {
     type Child = ScorerByFastFieldReader;
 
-    fn segment_scorer(&self, segment_reader: &SegmentReader) -> crate::Result<Self::Child> {
+    fn segment_scorer(&self, segment_reader: &SegmentReader<D>) -> crate::Result<Self::Child> {
         // We interpret this field as u64, regardless of its type, that way,
         // we avoid needless conversion. Regardless of the fast field type, the
         // mapping is monotonic, so it is sufficient to compute our top-K docs.
@@ -163,13 +171,16 @@ impl CustomScorer<u64> for ScorerByField {
     }
 }
 
-impl TopDocs {
+impl<D: DocumentAccess> TopDocs<D> {
     /// Creates a top score collector, with a number of documents equal to "limit".
     ///
     /// # Panics
     /// The method panics if limit is 0
-    pub fn with_limit(limit: usize) -> TopDocs {
-        TopDocs(TopCollector::with_limit(limit))
+    pub fn with_limit(limit: usize) -> Self {
+        Self {
+            inner: TopCollector::with_limit(limit),
+            phantom: PhantomData
+        }
     }
 
     /// Skip the first "offset" documents when collecting.
@@ -213,8 +224,11 @@ impl TopDocs {
     /// # }
     /// ```
     #[must_use]
-    pub fn and_offset(self, offset: usize) -> TopDocs {
-        TopDocs(self.0.and_offset(offset))
+    pub fn and_offset(self, offset: usize) -> Self {
+        Self {
+            inner: self.inner.and_offset(offset),
+            phantom: PhantomData
+        }
     }
 
     /// Set top-K to rank documents by a given fast field.
@@ -291,12 +305,12 @@ impl TopDocs {
     pub fn order_by_u64_field(
         self,
         field: impl ToString,
-    ) -> impl Collector<Fruit = Vec<(u64, DocAddress)>> {
+    ) -> impl Collector<D, Fruit = Vec<(u64, DocAddress)>> {
         CustomScoreTopCollector::new(
             ScorerByField {
                 field: field.to_string(),
             },
-            self.0.into_tscore(),
+            self.inner.into_tscore(),
         )
     }
 
@@ -372,7 +386,7 @@ impl TopDocs {
     pub fn order_by_fast_field<TFastValue>(
         self,
         fast_field: impl ToString,
-    ) -> impl Collector<Fruit = Vec<(TFastValue, DocAddress)>>
+    ) -> impl Collector<D, Fruit = Vec<(TFastValue, DocAddress)>>
     where
         TFastValue: FastValue,
     {
@@ -381,6 +395,7 @@ impl TopDocs {
             collector: u64_collector,
             field: fast_field.to_string(),
             fast_value: PhantomData,
+            phantom: PhantomData,
         }
     }
 
@@ -483,13 +498,13 @@ impl TopDocs {
     pub fn tweak_score<TScore, TScoreSegmentTweaker, TScoreTweaker>(
         self,
         score_tweaker: TScoreTweaker,
-    ) -> impl Collector<Fruit = Vec<(TScore, DocAddress)>>
+    ) -> impl Collector<D, Fruit = Vec<(TScore, DocAddress)>>
     where
         TScore: 'static + Send + Sync + Clone + PartialOrd,
         TScoreSegmentTweaker: ScoreSegmentTweaker<TScore> + 'static,
-        TScoreTweaker: ScoreTweaker<TScore, Child = TScoreSegmentTweaker> + Send + Sync,
+        TScoreTweaker: ScoreTweaker<TScore, D, Child = TScoreSegmentTweaker> + Send + Sync,
     {
-        TweakedScoreTopCollector::new(score_tweaker, self.0.into_tscore())
+        TweakedScoreTopCollector::new(score_tweaker, self.inner.into_tscore())
     }
 
     /// Ranks the documents using a custom score.
@@ -596,17 +611,17 @@ impl TopDocs {
     pub fn custom_score<TScore, TCustomSegmentScorer, TCustomScorer>(
         self,
         custom_score: TCustomScorer,
-    ) -> impl Collector<Fruit = Vec<(TScore, DocAddress)>>
+    ) -> impl Collector<D, Fruit = Vec<(TScore, DocAddress)>>
     where
         TScore: 'static + Send + Sync + Clone + PartialOrd,
         TCustomSegmentScorer: CustomSegmentScorer<TScore> + 'static,
-        TCustomScorer: CustomScorer<TScore, Child = TCustomSegmentScorer> + Send + Sync,
+        TCustomScorer: CustomScorer<D, TScore, Child = TCustomSegmentScorer> + Send + Sync,
     {
-        CustomScoreTopCollector::new(custom_score, self.0.into_tscore())
+        CustomScoreTopCollector::new(custom_score, self.inner.into_tscore())
     }
 }
 
-impl Collector for TopDocs {
+impl<D: DocumentAccess> Collector<D> for TopDocs<D> {
     type Fruit = Vec<(Score, DocAddress)>;
 
     type Child = TopScoreSegmentCollector;
@@ -614,9 +629,9 @@ impl Collector for TopDocs {
     fn for_segment(
         &self,
         segment_local_id: SegmentOrdinal,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
     ) -> crate::Result<Self::Child> {
-        let collector = self.0.for_segment(segment_local_id, reader);
+        let collector = self.inner.for_segment(segment_local_id, reader);
         Ok(TopScoreSegmentCollector(collector))
     }
 
@@ -628,16 +643,16 @@ impl Collector for TopDocs {
         &self,
         child_fruits: Vec<Vec<(Score, DocAddress)>>,
     ) -> crate::Result<Self::Fruit> {
-        self.0.merge_fruits(child_fruits)
+        self.inner.merge_fruits(child_fruits)
     }
 
     fn collect_segment(
         &self,
-        weight: &dyn Weight,
+        weight: &dyn Weight<D>,
         segment_ord: u32,
-        reader: &SegmentReader,
+        reader: &SegmentReader<D>,
     ) -> crate::Result<<Self::Child as SegmentCollector>::Fruit> {
-        let heap_len = self.0.limit + self.0.offset;
+        let heap_len = self.inner.limit + self.inner.offset;
         let mut heap: BinaryHeap<ComparableDoc<Score, DocId>> = BinaryHeap::with_capacity(heap_len);
 
         if let Some(alive_bitset) = reader.alive_bitset() {
