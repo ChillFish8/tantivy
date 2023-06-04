@@ -127,7 +127,7 @@ pub(crate) fn advance_deletes<D: DocumentAccess>(
         return Ok(());
     }
 
-    let segment_reader= SegmentReader::open(&segment)?;
+    let segment_reader = SegmentReader::open(&segment)?;
 
     let max_doc = segment_reader.max_doc();
     let mut alive_bitset: BitSet = match segment_entry.alive_bitset() {
@@ -247,8 +247,7 @@ fn apply_deletes<D: DocumentAccess>(
 }
 
 impl<D> IndexWriter<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     /// Create a new index writer. Attempts to acquire a lockfile.
     ///
@@ -815,7 +814,10 @@ mod tests {
     use crate::error::*;
     use crate::indexer::NoMergePolicy;
     use crate::query::{BooleanQuery, Occur, Query, QueryParser, TermQuery};
-    use crate::schema::{self, Facet, FacetOptions, IndexRecordOption, IpAddrOptions, NumericOptions, Schema, TextFieldIndexing, TextOptions, FAST, INDEXED, STORED, STRING, TEXT, DocValue};
+    use crate::schema::{
+        self, DocValue, Facet, FacetOptions, IndexRecordOption, IpAddrOptions, NumericOptions,
+        Schema, TextFieldIndexing, TextOptions, FAST, INDEXED, STORED, STRING, TEXT,
+    };
     use crate::store::DOCSTORE_CACHE_CAPACITY;
     use crate::{
         DateTime, DocAddress, Index, IndexSettings, IndexSortByField, Order, ReloadPolicy, Term,

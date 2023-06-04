@@ -4,8 +4,8 @@ use std::sync::{Arc, Mutex, Weak};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use crate::{Document, Executor, Inventory, Searcher, SearcherGeneration, TantivyError};
 use crate::schema::DocumentAccess;
+use crate::{Document, Executor, Inventory, Searcher, SearcherGeneration, TantivyError};
 
 pub const GC_INTERVAL: Duration = Duration::from_secs(1);
 

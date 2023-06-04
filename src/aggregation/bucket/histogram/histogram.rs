@@ -264,9 +264,8 @@ impl<D: DocumentAccess> Clone for SegmentHistogramCollector<D> {
     }
 }
 
-impl<D> SegmentAggregationCollector<D> for SegmentHistogramCollector<D> 
-where 
-    D: DocumentAccess
+impl<D> SegmentAggregationCollector<D> for SegmentHistogramCollector<D>
+where D: DocumentAccess
 {
     fn add_intermediate_aggregation_result(
         self: Box<Self>,

@@ -7,7 +7,9 @@ use tokenizer_api::Token;
 
 use crate::indexer::doc_id_mapping::DocIdMapping;
 use crate::schema::term::{JSON_PATH_SEGMENT_SEP, JSON_PATH_SEGMENT_SEP_STR};
-use crate::schema::{value_type_to_column_type, Document, FieldType, Schema, Type, Value, DocumentAccess, DocValue};
+use crate::schema::{
+    value_type_to_column_type, DocValue, Document, DocumentAccess, FieldType, Schema, Type, Value,
+};
 use crate::tokenizer::{TextAnalyzer, TokenizerManager};
 use crate::{DateTimePrecision, DocId, TantivyError};
 
@@ -125,9 +127,7 @@ impl<D: DocumentAccess> FastFieldsWriter<D> {
         for (field, value) in doc.iter_fields_and_values() {
             let value = value as D::Value<'_>;
 
-            if let Some(field_name) =
-                &self.fast_field_names[field.field_id() as usize]
-            {
+            if let Some(field_name) = &self.fast_field_names[field.field_id() as usize] {
                 // TODO: Fix
                 match &field_value.value {
                     Value::U64(u64_val) => {
@@ -186,8 +186,7 @@ impl<D: DocumentAccess> FastFieldsWriter<D> {
                             .record_bool(doc_id, field_name.as_str(), *bool_val);
                     }
                     Value::Date(datetime) => {
-                        let date_precision =
-                            self.date_precisions[field.field_id() as usize];
+                        let date_precision = self.date_precisions[field.field_id() as usize];
                         let truncated_datetime = datetime.truncate(date_precision);
                         self.columnar_writer.record_datetime(
                             doc_id,
@@ -207,8 +206,7 @@ impl<D: DocumentAccess> FastFieldsWriter<D> {
                         self.json_path_buffer.clear();
                         self.json_path_buffer.push_str(field_name);
 
-                        let text_analyzer =
-                            &self.per_field_tokenizer[field.field_id() as usize];
+                        let text_analyzer = &self.per_field_tokenizer[field.field_id() as usize];
 
                         record_json_obj_to_columnar_writer(
                             doc_id,

@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::marker::PhantomData;
 
-use crate::{DocAddress, DocId, SegmentOrdinal, SegmentReader};
 use crate::schema::DocumentAccess;
+use crate::{DocAddress, DocId, SegmentOrdinal, SegmentReader};
 
 /// Contains a feature (field, score, etc.) of a document along with the document address.
 ///

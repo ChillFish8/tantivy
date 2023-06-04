@@ -1,7 +1,7 @@
 use super::Collector;
 use crate::collector::SegmentCollector;
-use crate::{DocId, Score, SegmentOrdinal, SegmentReader};
 use crate::schema::DocumentAccess;
+use crate::{DocId, Score, SegmentOrdinal, SegmentReader};
 
 /// `CountCollector` collector only counts how many
 /// documents match the query.

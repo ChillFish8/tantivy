@@ -1,8 +1,8 @@
 use crate::indexer::operation::AddOperation;
 use crate::indexer::segment_updater::save_metas;
 use crate::indexer::SegmentWriter;
-use crate::{Directory, Document, Index, IndexMeta, Opstamp, Segment};
 use crate::schema::DocumentAccess;
+use crate::{Directory, Document, Index, IndexMeta, Opstamp, Segment};
 
 #[doc(hidden)]
 pub struct SingleSegmentIndexWriter<D: DocumentAccess = Document> {
@@ -12,8 +12,7 @@ pub struct SingleSegmentIndexWriter<D: DocumentAccess = Document> {
 }
 
 impl<D> SingleSegmentIndexWriter<D>
-where
-    D: DocumentAccess,
+where D: DocumentAccess
 {
     pub fn new(index: Index<D>, mem_budget: usize) -> crate::Result<Self> {
         let segment = index.new_segment();

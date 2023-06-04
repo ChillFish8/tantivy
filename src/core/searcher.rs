@@ -76,8 +76,7 @@ impl<D> Clone for Searcher<D> {
 }
 
 impl<D> Searcher<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     /// Returns the `Index` associated with the `Searcher`
     pub fn index(&self) -> &Index<D> {

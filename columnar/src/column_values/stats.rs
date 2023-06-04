@@ -59,7 +59,7 @@ impl BinaryDeserializable for ColumnStats {
 mod tests {
     use std::num::NonZeroU64;
 
-    use common::{BinarySerializable, BinaryDeserializable};
+    use common::{BinaryDeserializable, BinarySerializable};
 
     use crate::column_values::ColumnStats;
 

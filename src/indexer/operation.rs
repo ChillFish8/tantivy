@@ -11,8 +11,7 @@ pub struct DeleteOperation<D: DocumentAccess = Document> {
 /// Timestamped Add operation.
 #[derive(Eq, PartialEq, Debug)]
 pub struct AddOperation<D = Document>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     pub opstamp: Opstamp,
     pub document: D,

@@ -225,8 +225,7 @@ impl<D: DocumentAccess> SegmentRangeBucketEntry<D> {
 }
 
 impl<D> SegmentAggregationCollector<D> for SegmentRangeCollector<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     fn add_intermediate_aggregation_result(
         self: Box<Self>,

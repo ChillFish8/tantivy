@@ -107,7 +107,9 @@ impl<Left: BinarySerializable, Right: BinarySerializable> BinarySerializable for
     }
 }
 
-impl<Left: BinaryDeserializable, Right: BinaryDeserializable> BinaryDeserializable for (Left, Right) {
+impl<Left: BinaryDeserializable, Right: BinaryDeserializable> BinaryDeserializable
+    for (Left, Right)
+{
     fn deserialize<R: Read>(reader: &mut R) -> io::Result<Self> {
         Ok((Left::deserialize(reader)?, Right::deserialize(reader)?))
     }

@@ -156,8 +156,7 @@ impl<D> IndexBuilder<D> {
 }
 
 impl<D> IndexBuilder<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     /// Creates a new index using the [`RamDirectory`].
     ///
@@ -354,8 +353,7 @@ impl<D> Index<D> {
 }
 
 impl<D> Index<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     /// Creates a new index using the [`RamDirectory`].
     ///
@@ -372,10 +370,7 @@ where
     /// If a previous index was in this directory, then it returns
     /// a [`TantivyError::IndexAlreadyExists`] error.
     #[cfg(feature = "mmap")]
-    pub fn create_in_dir<P: AsRef<Path>>(
-        directory_path: P,
-        schema: Schema,
-    ) -> crate::Result<Self> {
+    pub fn create_in_dir<P: AsRef<Path>>(directory_path: P, schema: Schema) -> crate::Result<Self> {
         IndexBuilder::new()
             .schema(schema)
             .create_in_dir(directory_path)
@@ -401,7 +396,9 @@ where
     /// see: [`IndexBuilder::create_in_ram()`].
     #[cfg(feature = "mmap")]
     pub fn create_from_tempdir(schema: Schema) -> crate::Result<Self> {
-        IndexBuilder::<D>::new().schema(schema).create_from_tempdir()
+        IndexBuilder::<D>::new()
+            .schema(schema)
+            .create_from_tempdir()
     }
 
     /// Creates a new index given an implementation of the trait `Directory`.

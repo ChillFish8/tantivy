@@ -10,8 +10,8 @@ use crate::aggregation::intermediate_agg_result::{
     IntermediateAggregationResult, IntermediateAggregationResults, IntermediateMetricResult,
 };
 use crate::aggregation::segment_agg_result::SegmentAggregationCollector;
-use crate::{DocId, TantivyError};
 use crate::schema::DocumentAccess;
+use crate::{DocId, TantivyError};
 
 /// A multi-value metric aggregation that computes a collection of statistics on numeric values that
 /// are extracted from the aggregated documents.

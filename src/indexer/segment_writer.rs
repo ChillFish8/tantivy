@@ -12,7 +12,10 @@ use crate::postings::{
     compute_table_memory_size, serialize_postings, IndexingContext, IndexingPosition,
     PerFieldPostingsWriter, PostingsWriter,
 };
-use crate::schema::{FieldEntry, FieldType, Schema, Term, Value, DATE_TIME_PRECISION_INDEXED, DocumentAccess, DocValue};
+use crate::schema::{
+    DocValue, DocumentAccess, FieldEntry, FieldType, Schema, Term, Value,
+    DATE_TIME_PRECISION_INDEXED,
+};
 use crate::store::{StoreReader, StoreWriter};
 use crate::tokenizer::{FacetTokenizer, PreTokenizedStream, TextAnalyzer, Tokenizer};
 use crate::{DocId, Document, Opstamp, SegmentComponent};
@@ -69,8 +72,7 @@ pub struct SegmentWriter<D: DocumentAccess = Document> {
 }
 
 impl<D> SegmentWriter<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     /// Creates a new `SegmentWriter`
     ///
@@ -81,10 +83,7 @@ where
     /// the flushing behavior as a memory limit.
     /// - segment: The segment being written
     /// - schema
-    pub fn for_segment(
-        memory_budget_in_bytes: usize,
-        segment: Segment<D>,
-    ) -> crate::Result<Self> {
+    pub fn for_segment(memory_budget_in_bytes: usize, segment: Segment<D>) -> crate::Result<Self> {
         let schema = segment.schema();
         let tokenizer_manager = segment.index().tokenizers().clone();
         let tokenizer_manager_fast_field = segment.index().fast_field_tokenizer().clone();

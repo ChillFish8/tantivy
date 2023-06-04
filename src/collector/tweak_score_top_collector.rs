@@ -1,7 +1,7 @@
 use crate::collector::top_collector::{TopCollector, TopSegmentCollector};
 use crate::collector::{Collector, SegmentCollector};
-use crate::{DocAddress, DocId, Document, Result, Score, SegmentReader};
 use crate::schema::DocumentAccess;
+use crate::{DocAddress, DocId, Document, Result, Score, SegmentReader};
 
 pub(crate) struct TweakedScoreTopCollector<D, TScoreTweaker, TScore = Score> {
     score_tweaker: TScoreTweaker,
@@ -9,13 +9,9 @@ pub(crate) struct TweakedScoreTopCollector<D, TScoreTweaker, TScore = Score> {
 }
 
 impl<D, TScoreTweaker, TScore> TweakedScoreTopCollector<D, TScoreTweaker, TScore>
-where
-    TScore: Clone + PartialOrd
+where TScore: Clone + PartialOrd
 {
-    pub fn new(
-        score_tweaker: TScoreTweaker,
-        collector: TopCollector<D, TScore>,
-    ) -> Self {
+    pub fn new(score_tweaker: TScoreTweaker, collector: TopCollector<D, TScore>) -> Self {
         Self {
             score_tweaker,
             collector,

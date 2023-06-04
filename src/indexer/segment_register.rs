@@ -2,10 +2,10 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{self, Debug, Display, Formatter};
 
 use crate::core::{SegmentId, SegmentMeta};
-use crate::Document;
 use crate::indexer::delete_queue::DeleteCursor;
 use crate::indexer::segment_entry::SegmentEntry;
 use crate::schema::DocumentAccess;
+use crate::Document;
 
 /// The segment register keeps track
 /// of the list of segment, their size as well

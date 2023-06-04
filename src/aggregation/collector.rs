@@ -8,8 +8,8 @@ use super::segment_agg_result::{
 };
 use crate::aggregation::agg_req_with_accessor::get_aggs_with_segment_accessor_and_validate;
 use crate::collector::{Collector, SegmentCollector};
-use crate::{DocId, Document, SegmentReader, TantivyError};
 use crate::schema::DocumentAccess;
+use crate::{DocId, Document, SegmentReader, TantivyError};
 
 /// The default max bucket count, before the aggregation fails.
 pub const DEFAULT_BUCKET_LIMIT: u32 = 65000;

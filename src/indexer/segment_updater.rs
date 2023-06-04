@@ -25,8 +25,8 @@ use crate::indexer::{
     DefaultMergePolicy, MergeCandidate, MergeOperation, MergePolicy, SegmentEntry,
     SegmentSerializer,
 };
-use crate::{FutureResult, Opstamp};
 use crate::schema::DocumentAccess;
+use crate::{FutureResult, Opstamp};
 
 const NUM_MERGE_THREADS: usize = 4;
 
@@ -123,8 +123,7 @@ fn merge<D: DocumentAccess>(
         .collect();
 
     // An IndexMerger is like a "view" of our merged segments.
-    let merger =
-        IndexMerger::open(index.schema(), index.settings().clone(), &segments[..])?;
+    let merger = IndexMerger::open(index.schema(), index.settings().clone(), &segments[..])?;
 
     // ... we just serialize this index merger in our new segment to merge the segments.
     let segment_serializer = SegmentSerializer::for_segment(merged_segment.clone(), true)?;

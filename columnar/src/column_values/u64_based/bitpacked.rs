@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::num::NonZeroU64;
 use std::ops::{Range, RangeInclusive};
 
-use common::{BinarySerializable, BinaryDeserializable, OwnedBytes};
+use common::{BinaryDeserializable, BinarySerializable, OwnedBytes};
 use fastdivide::DividerU64;
 use tantivy_bitpacker::{compute_num_bits, BitPacker, BitUnpacker};
 

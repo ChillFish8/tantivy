@@ -2,8 +2,8 @@ use std::ops::DerefMut;
 use std::sync::{Arc, RwLock, Weak};
 
 use super::operation::DeleteOperation;
-use crate::{Document, Opstamp};
 use crate::schema::DocumentAccess;
+use crate::{Document, Opstamp};
 
 // The DeleteQueue is similar in conceptually to a multiple
 // consumer single producer broadcast channel.

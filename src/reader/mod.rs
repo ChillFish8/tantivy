@@ -10,9 +10,9 @@ pub use warming::Warmer;
 use self::warming::WarmingState;
 use crate::core::searcher::{SearcherGeneration, SearcherInner};
 use crate::directory::{Directory, WatchCallback, WatchHandle, META_LOCK};
+use crate::schema::DocumentAccess;
 use crate::store::DOCSTORE_CACHE_CAPACITY;
 use crate::{Document, Index, Inventory, Searcher, SegmentReader, TrackedObject};
-use crate::schema::DocumentAccess;
 
 /// Defines when a new version of the index should be reloaded.
 ///
@@ -49,8 +49,7 @@ pub struct IndexReaderBuilder<D = Document> {
 }
 
 impl<D> IndexReaderBuilder<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     #[must_use]
     pub(crate) fn new(index: Index<D>) -> IndexReaderBuilder<D> {

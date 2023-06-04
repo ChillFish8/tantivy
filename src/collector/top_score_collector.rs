@@ -14,8 +14,8 @@ use crate::collector::{
 };
 use crate::fastfield::{FastFieldNotAvailableError, FastValue};
 use crate::query::Weight;
-use crate::{DocAddress, DocId, Document, Score, SegmentOrdinal, SegmentReader, TantivyError};
 use crate::schema::DocumentAccess;
+use crate::{DocAddress, DocId, Document, Score, SegmentOrdinal, SegmentReader, TantivyError};
 
 struct FastFieldConvertCollector<D, TCollector, TFastValue>
 where
@@ -29,7 +29,8 @@ where
     pub phantom: PhantomData<D>,
 }
 
-impl<D, TCollector, TFastValue> Collector<D> for FastFieldConvertCollector<D, TCollector, TFastValue>
+impl<D, TCollector, TFastValue> Collector<D>
+    for FastFieldConvertCollector<D, TCollector, TFastValue>
 where
     D: DocumentAccess,
     TCollector: Collector<D, Fruit = Vec<(u64, DocAddress)>>,
@@ -122,7 +123,7 @@ where
 /// # Ok(())
 /// # }
 /// ```
-pub struct TopDocs<D = Document>{
+pub struct TopDocs<D = Document> {
     inner: TopCollector<D, Score>,
     phantom: PhantomData<D>,
 }
@@ -179,7 +180,7 @@ impl<D: DocumentAccess> TopDocs<D> {
     pub fn with_limit(limit: usize) -> Self {
         Self {
             inner: TopCollector::with_limit(limit),
-            phantom: PhantomData
+            phantom: PhantomData,
         }
     }
 
@@ -227,7 +228,7 @@ impl<D: DocumentAccess> TopDocs<D> {
     pub fn and_offset(self, offset: usize) -> Self {
         Self {
             inner: self.inner.and_offset(offset),
-            phantom: PhantomData
+            phantom: PhantomData,
         }
     }
 

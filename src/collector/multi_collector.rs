@@ -3,8 +3,8 @@ use std::ops::Deref;
 
 use super::{Collector, SegmentCollector};
 use crate::collector::Fruit;
-use crate::{DocId, Document, Score, SegmentOrdinal, SegmentReader, TantivyError};
 use crate::schema::DocumentAccess;
+use crate::{DocId, Document, Score, SegmentOrdinal, SegmentReader, TantivyError};
 
 /// MultiFruit keeps Fruits from every nested Collector
 pub struct MultiFruit {
@@ -156,7 +156,9 @@ impl<TFruit: Fruit> FruitHandle<TFruit> {
 #[allow(clippy::type_complexity)]
 pub struct MultiCollector<'a, D: DocumentAccess = Document> {
     collector_wrappers: Vec<
-        Box<dyn Collector<D, Child = Box<dyn BoxableSegmentCollector>, Fruit = Box<dyn Fruit>> + 'a>,
+        Box<
+            dyn Collector<D, Child = Box<dyn BoxableSegmentCollector>, Fruit = Box<dyn Fruit>> + 'a,
+        >,
     >,
 }
 
@@ -169,8 +171,7 @@ impl<'a, D: DocumentAccess> Default for MultiCollector<'a, D> {
 }
 
 impl<'a, D> MultiCollector<'a, D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     /// Create a new `MultiCollector`
     pub fn new() -> Self {
@@ -183,8 +184,10 @@ where
         collector: TCollector,
     ) -> FruitHandle<TCollector::Fruit> {
         let pos = self.collector_wrappers.len();
-        self.collector_wrappers
-            .push(Box::new(CollectorWrapper { inner: collector, phantom: PhantomData }));
+        self.collector_wrappers.push(Box::new(CollectorWrapper {
+            inner: collector,
+            phantom: PhantomData,
+        }));
         FruitHandle {
             pos,
             _phantom: PhantomData,

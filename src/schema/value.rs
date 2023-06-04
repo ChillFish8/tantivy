@@ -3,6 +3,7 @@ use std::net::Ipv6Addr;
 
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
+pub(crate) use binary_serialize::{deserialize, serialize};
 use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Map;
@@ -11,7 +12,6 @@ use crate::schema::document::{DocValue, ValueDeserialize};
 use crate::schema::Facet;
 use crate::tokenizer::PreTokenizedString;
 use crate::DateTime;
-pub(crate) use binary_serialize::{serialize, deserialize};
 
 /// Value represents the value of a any field.
 /// It is an enum over all over all of the possible field type.
@@ -333,7 +333,7 @@ mod binary_serialize {
     use std::net::Ipv6Addr;
 
     use columnar::MonotonicallyMappableToU128;
-    use common::{u64_to_f64, BinarySerializable, BinaryDeserializable};
+    use common::{u64_to_f64, BinaryDeserializable, BinarySerializable};
 
     use crate::schema::document::{DocValue, ValueDeserialize};
     use crate::schema::Facet;
@@ -356,10 +356,7 @@ mod binary_serialize {
 
     const TOK_STR_CODE: u8 = 0;
 
-    pub fn serialize<'a, T, W>(
-        value: &'a T,
-        writer: &mut W
-    ) -> io::Result<()>
+    pub fn serialize<'a, T, W>(value: &'a T, writer: &mut W) -> io::Result<()>
     where
         T: DocValue<'a>,
         W: Write + ?Sized,
@@ -477,8 +474,7 @@ mod binary_serialize {
                 match ext_type_code {
                     TOK_STR_CODE => {
                         let str_val = String::deserialize(reader)?;
-                        if let Ok(value) = serde_json::from_str::<PreTokenizedString>(&str_val)
-                        {
+                        if let Ok(value) = serde_json::from_str::<PreTokenizedString>(&str_val) {
                             Ok(T::from_pre_tok_str(value))
                         } else {
                             Err(io::Error::new(
@@ -489,9 +485,7 @@ mod binary_serialize {
                     }
                     _ => Err(io::Error::new(
                         ErrorKind::InvalidData,
-                        format!(
-                            "No extended field type is associated with code {ext_type_code:?}"
-                        ),
+                        format!("No extended field type is associated with code {ext_type_code:?}"),
                     )),
                 }
             }

@@ -6,7 +6,7 @@ use common::BinarySerializable;
 use super::compressors::Compressor;
 use super::StoreReader;
 use crate::directory::WritePtr;
-use crate::schema::{Document, document, DocumentAccess, Schema};
+use crate::schema::{document, Document, DocumentAccess, Schema};
 use crate::store::store_compressor::BlockCompressor;
 use crate::DocId;
 
@@ -24,7 +24,7 @@ pub struct StoreWriter<D: DocumentAccess = Document> {
     current_block: Vec<u8>,
     doc_pos: Vec<u32>,
     block_compressor: BlockCompressor<D>,
-    _phantom: PhantomData<D>
+    _phantom: PhantomData<D>,
 }
 
 impl<D: DocumentAccess> StoreWriter<D> {

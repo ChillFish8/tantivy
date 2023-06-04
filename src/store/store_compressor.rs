@@ -6,11 +6,11 @@ use std::{io, thread};
 use common::{BinarySerializable, CountingWriter, TerminatingWrite};
 
 use crate::directory::WritePtr;
+use crate::schema::DocumentAccess;
 use crate::store::footer::DocStoreFooter;
 use crate::store::index::{Checkpoint, SkipIndexBuilder};
 use crate::store::{Compressor, Decompressor, StoreReader};
 use crate::{DocId, Document};
-use crate::schema::DocumentAccess;
 
 pub struct BlockCompressor<D: DocumentAccess = Document>(BlockCompressorVariants<D>);
 

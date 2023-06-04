@@ -15,8 +15,7 @@ pub struct Segment<D = Document> {
 }
 
 impl<D> fmt::Debug for Segment<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Segment({:?})", self.id().uuid_string())
@@ -33,8 +32,7 @@ impl<D> Clone for Segment<D> {
 }
 
 impl<D> Segment<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     /// Creates a new segment given an `Index` and a `SegmentId`
     pub(crate) fn for_index(index: Index<D>, meta: SegmentMeta) -> Self {

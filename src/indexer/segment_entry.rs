@@ -3,9 +3,9 @@ use std::fmt;
 use common::BitSet;
 
 use crate::core::{SegmentId, SegmentMeta};
-use crate::Document;
 use crate::indexer::delete_queue::DeleteCursor;
 use crate::schema::DocumentAccess;
+use crate::Document;
 
 /// A segment entry describes the state of
 /// a given segment, at a given instant.

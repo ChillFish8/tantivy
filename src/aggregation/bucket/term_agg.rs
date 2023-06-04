@@ -234,7 +234,6 @@ impl<D: DocumentAccess> Default for TermBuckets<D> {
     }
 }
 
-
 impl<D: DocumentAccess> TermBuckets<D> {
     fn get_memory_consumption(&self) -> usize {
         let sub_aggs_mem = self.sub_aggs.memory_consumption();
@@ -284,8 +283,7 @@ impl<D: DocumentAccess> Clone for SegmentTermCollectorComposite<D> {
 }
 
 impl<D> SegmentAggregationCollector<D> for SegmentTermCollectorComposite<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     fn add_intermediate_aggregation_result(
         self: Box<Self>,
@@ -424,8 +422,7 @@ impl<D: DocumentAccess> Clone for SegmentTermCollector<D> {
 }
 
 impl<D> SegmentAggregationCollector<D> for SegmentTermCollector<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     fn add_intermediate_aggregation_result(
         self: Box<Self>,

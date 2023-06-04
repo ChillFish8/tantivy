@@ -1,9 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
-use crate::Document;
-use crate::schema::DocumentAccess;
 
 use super::AddBatchReceiver;
+use crate::schema::DocumentAccess;
+use crate::Document;
 
 #[derive(Clone)]
 pub(crate) struct IndexWriterStatus<D: DocumentAccess = Document> {

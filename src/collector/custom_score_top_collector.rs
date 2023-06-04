@@ -1,7 +1,7 @@
 use crate::collector::top_collector::{TopCollector, TopSegmentCollector};
 use crate::collector::{Collector, SegmentCollector};
-use crate::{DocAddress, DocId, Score, SegmentReader};
 use crate::schema::DocumentAccess;
+use crate::{DocAddress, DocId, Score, SegmentReader};
 
 pub(crate) struct CustomScoreTopCollector<D, TCustomScorer, TScore = Score> {
     custom_scorer: TCustomScorer,
@@ -9,13 +9,9 @@ pub(crate) struct CustomScoreTopCollector<D, TCustomScorer, TScore = Score> {
 }
 
 impl<D, TCustomScorer, TScore> CustomScoreTopCollector<D, TCustomScorer, TScore>
-where
-    TScore: Clone + PartialOrd
+where TScore: Clone + PartialOrd
 {
-    pub(crate) fn new(
-        custom_scorer: TCustomScorer,
-        collector: TopCollector<D, TScore>,
-    ) -> Self {
+    pub(crate) fn new(custom_scorer: TCustomScorer, collector: TopCollector<D, TScore>) -> Self {
         Self {
             custom_scorer,
             collector,

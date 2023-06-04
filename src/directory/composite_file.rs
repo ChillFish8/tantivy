@@ -187,7 +187,7 @@ mod test {
     use std::io::Write;
     use std::path::Path;
 
-    use common::{BinarySerializable, BinaryDeserializable, VInt};
+    use common::{BinaryDeserializable, BinarySerializable, VInt};
 
     use super::{CompositeFile, CompositeWrite};
     use crate::directory::{Directory, RamDirectory};

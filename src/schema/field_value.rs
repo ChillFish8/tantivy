@@ -39,10 +39,8 @@ impl<'a> Iterator for FieldValueIter<'a> {
     type Item = (Field, &'a Value);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
-            .map(|field_value| (
-                field_value.field,
-                &field_value.value
-            ))
+        self.0
+            .next()
+            .map(|field_value| (field_value.field, &field_value.value))
     }
 }

@@ -61,8 +61,7 @@ use crate::{Score, SegmentReader, TantivyError};
 /// # }
 /// ```
 pub struct FilterCollector<D, TCollector, TPredicate, TPredicateValue: Default>
-where
-    TPredicate: 'static + Clone
+where TPredicate: 'static + Clone
 {
     field: Field,
     collector: TCollector,
@@ -79,11 +78,7 @@ where
     TPredicate: Fn(TPredicateValue) -> bool + Send + Sync + Clone,
 {
     /// Create a new FilterCollector.
-    pub fn new(
-        field: Field,
-        predicate: TPredicate,
-        collector: TCollector,
-    ) -> Self {
+    pub fn new(field: Field, predicate: TPredicate, collector: TCollector) -> Self {
         Self {
             field,
             predicate,

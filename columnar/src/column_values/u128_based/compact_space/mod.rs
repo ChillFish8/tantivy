@@ -21,7 +21,9 @@ mod blank_range;
 mod build_compact_space;
 
 use build_compact_space::get_compact_space;
-use common::{BinaryDeserializable, BinarySerializable, CountingWriter, OwnedBytes, VInt, VIntU128};
+use common::{
+    BinaryDeserializable, BinarySerializable, CountingWriter, OwnedBytes, VInt, VIntU128,
+};
 use tantivy_bitpacker::{self, BitPacker, BitUnpacker};
 
 use crate::column_values::ColumnValues;

@@ -18,7 +18,9 @@ use super::metric::{
 use crate::aggregation::bucket::SegmentTermCollectorComposite;
 use crate::schema::DocumentAccess;
 
-pub(crate) trait SegmentAggregationCollector<D: DocumentAccess>: CollectorClone<D> + Debug {
+pub(crate) trait SegmentAggregationCollector<D: DocumentAccess>:
+    CollectorClone<D> + Debug
+{
     fn add_intermediate_aggregation_result(
         self: Box<Self>,
         agg_with_accessor: &AggregationsWithAccessor<D>,
@@ -39,10 +41,7 @@ pub(crate) trait SegmentAggregationCollector<D: DocumentAccess>: CollectorClone<
 
     /// Finalize method. Some Aggregator collect blocks of docs before calling `collect_block`.
     /// This method ensures those staged docs will be collected.
-    fn flush(
-        &mut self,
-        _agg_with_accessor: &mut AggregationsWithAccessor<D>
-    ) -> crate::Result<()> {
+    fn flush(&mut self, _agg_with_accessor: &mut AggregationsWithAccessor<D>) -> crate::Result<()> {
         Ok(())
     }
 }
@@ -54,7 +53,7 @@ pub(crate) trait CollectorClone<D: DocumentAccess> {
 impl<D, T> CollectorClone<D> for T
 where
     D: DocumentAccess,
-    T: 'static + SegmentAggregationCollector<D> + Clone
+    T: 'static + SegmentAggregationCollector<D> + Clone,
 {
     fn clone_box(&self) -> Box<dyn SegmentAggregationCollector<D>> {
         Box::new(self.clone())
@@ -183,14 +182,14 @@ impl<D: DocumentAccess> Debug for GenericSegmentAggregationResultsCollector<D> {
 }
 impl<D: DocumentAccess> Clone for GenericSegmentAggregationResultsCollector<D> {
     fn clone(&self) -> Self {
-        Self { aggs: self.aggs.clone() }
+        Self {
+            aggs: self.aggs.clone(),
+        }
     }
 }
 
-
 impl<D> SegmentAggregationCollector<D> for GenericSegmentAggregationResultsCollector<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     fn add_intermediate_aggregation_result(
         self: Box<Self>,
@@ -235,7 +234,9 @@ where
 }
 
 impl<D: DocumentAccess> GenericSegmentAggregationResultsCollector<D> {
-    pub(crate) fn from_req_and_validate(req: &mut AggregationsWithAccessor<D>) -> crate::Result<Self> {
+    pub(crate) fn from_req_and_validate(
+        req: &mut AggregationsWithAccessor<D>,
+    ) -> crate::Result<Self> {
         let aggs = req
             .aggs
             .values_mut()

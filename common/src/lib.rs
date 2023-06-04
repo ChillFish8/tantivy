@@ -19,7 +19,7 @@ pub use datetime::DatePrecision;
 pub use datetime::{DateTime, DateTimePrecision};
 pub use group_by::GroupByIteratorExtended;
 pub use ownedbytes::{OwnedBytes, StableDeref};
-pub use serialize::{BinarySerializable, BinaryDeserializable, DeserializeFrom, FixedSize};
+pub use serialize::{BinaryDeserializable, BinarySerializable, DeserializeFrom, FixedSize};
 pub use vint::{
     read_u32_vint, read_u32_vint_no_advance, serialize_vint_u32, write_u32_vint, VInt, VIntU128,
 };

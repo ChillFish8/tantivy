@@ -12,8 +12,8 @@ use crate::aggregation::intermediate_agg_result::{
 };
 use crate::aggregation::segment_agg_result::SegmentAggregationCollector;
 use crate::aggregation::{f64_from_fastfield_u64, AggregationError};
-use crate::{DocId, TantivyError};
 use crate::schema::DocumentAccess;
+use crate::{DocId, TantivyError};
 
 /// # Percentiles
 ///

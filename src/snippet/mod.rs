@@ -6,7 +6,7 @@ use std::ops::Range;
 use htmlescape::encode_minimal;
 
 use crate::query::Query;
-use crate::schema::{DocumentAccess, Field, DocValue};
+use crate::schema::{DocValue, DocumentAccess, Field};
 use crate::tokenizer::{TextAnalyzer, Token};
 use crate::{Document, Score, Searcher, Term};
 
@@ -294,7 +294,7 @@ pub struct SnippetGenerator<D = Document> {
     tokenizer: TextAnalyzer,
     field: Field,
     max_num_chars: usize,
-    _phantom: PhantomData<D>
+    _phantom: PhantomData<D>,
 }
 
 impl<D: DocumentAccess> SnippetGenerator<D> {
@@ -314,11 +314,7 @@ impl<D: DocumentAccess> SnippetGenerator<D> {
         }
     }
     /// Creates a new snippet generator
-    pub fn create(
-        searcher: &Searcher,
-        query: &dyn Query,
-        field: Field,
-    ) -> crate::Result<Self<>> {
+    pub fn create(searcher: &Searcher, query: &dyn Query, field: Field) -> crate::Result<Self> {
         let mut terms: BTreeSet<&Term> = BTreeSet::new();
         query.query_terms(&mut |term, _| {
             if term.field() == field {

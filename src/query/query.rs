@@ -125,9 +125,9 @@ impl<'a, D: DocumentAccess> EnableScoring<'a, D> {
 ///
 /// [`Scorer`]: crate::query::Scorer
 /// [`SegmentReader`]: crate::SegmentReader
-pub trait Query<D = Document>: QueryClone + Send + Sync + downcast_rs::Downcast + fmt::Debug
-where
-    D: DocumentAccess
+pub trait Query<D = Document>:
+    QueryClone + Send + Sync + downcast_rs::Downcast + fmt::Debug
+where D: DocumentAccess
 {
     /// Create the weight associated with a query.
     ///
@@ -138,7 +138,11 @@ where
     fn weight(&self, enable_scoring: EnableScoring<'_, D>) -> crate::Result<Box<dyn Weight<D>>>;
 
     /// Returns an `Explanation` for the score of the document.
-    fn explain(&self, searcher: &Searcher<D>, doc_address: DocAddress) -> crate::Result<Explanation> {
+    fn explain(
+        &self,
+        searcher: &Searcher<D>,
+        doc_address: DocAddress,
+    ) -> crate::Result<Explanation> {
         let weight = self.weight(EnableScoring::enabled_from_searcher(searcher))?;
         let reader = searcher.segment_reader(doc_address.segment_ord);
         weight.explain(reader, doc_address.doc_id)

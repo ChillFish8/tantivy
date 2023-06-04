@@ -57,9 +57,7 @@ pub struct InvertedIndexSerializer {
 impl InvertedIndexSerializer {
     /// Open a new `InvertedIndexSerializer` for the given segment
     pub fn open<D>(segment: &mut Segment<D>) -> crate::Result<InvertedIndexSerializer>
-    where
-        D: DocumentAccess
-    {
+    where D: DocumentAccess {
         use crate::SegmentComponent::{Positions, Postings, Terms};
         let inv_index_serializer = InvertedIndexSerializer {
             terms_write: CompositeWrite::wrap(segment.open_write(Terms)?),

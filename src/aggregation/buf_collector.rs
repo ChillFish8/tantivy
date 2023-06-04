@@ -1,8 +1,8 @@
 use super::agg_req_with_accessor::AggregationsWithAccessor;
 use super::intermediate_agg_result::IntermediateAggregationResults;
 use super::segment_agg_result::SegmentAggregationCollector;
-use crate::DocId;
 use crate::schema::DocumentAccess;
+use crate::DocId;
 
 pub(crate) const DOC_BLOCK_SIZE: usize = 64;
 pub(crate) type DocBlock = [DocId; DOC_BLOCK_SIZE];
@@ -44,8 +44,7 @@ impl<D: DocumentAccess> BufAggregationCollector<D> {
 }
 
 impl<D> SegmentAggregationCollector<D> for BufAggregationCollector<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     #[inline]
     fn add_intermediate_aggregation_result(

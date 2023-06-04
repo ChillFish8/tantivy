@@ -4,11 +4,11 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::segment_register::SegmentRegister;
 use crate::core::{SegmentId, SegmentMeta};
-use crate::Document;
 use crate::error::TantivyError;
 use crate::indexer::delete_queue::DeleteCursor;
 use crate::indexer::SegmentEntry;
 use crate::schema::DocumentAccess;
+use crate::Document;
 
 struct SegmentRegisters<D: DocumentAccess> {
     uncommitted: SegmentRegister<D>,
@@ -81,10 +81,7 @@ impl<D: DocumentAccess> Debug for SegmentManager<D> {
 }
 
 impl<D: DocumentAccess> SegmentManager<D> {
-    pub fn from_segments(
-        segment_metas: Vec<SegmentMeta>,
-        delete_cursor: &DeleteCursor<D>,
-    ) -> Self {
+    pub fn from_segments(segment_metas: Vec<SegmentMeta>, delete_cursor: &DeleteCursor<D>) -> Self {
         Self {
             registers: RwLock::new(SegmentRegisters {
                 uncommitted: SegmentRegister::default(),

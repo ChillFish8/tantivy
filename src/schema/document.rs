@@ -11,16 +11,15 @@ use serde::Serializer;
 use serde_json::Map;
 
 use super::*;
+use crate::schema::field_value::FieldValueIter;
 use crate::tokenizer::PreTokenizedString;
 use crate::DateTime;
-use crate::schema::field_value::FieldValueIter;
 
 /// The core trait representing a document within the index.
 pub trait DocumentAccess: Send + Sync + 'static {
     /// The value of the field.
     type Value<'a>: DocValue<'a>
-    where
-        Self: 'a;
+    where Self: 'a;
     /// The owned version of a value type.
     ///
     /// It's possible that this is the same type as the borrowed
@@ -30,8 +29,7 @@ pub trait DocumentAccess: Send + Sync + 'static {
     type OwnedValue: ValueDeserialize + Debug;
     /// The iterator over all of the fields and values within the doc.
     type FieldsValuesIter<'a>: Iterator<Item = (Field, Self::Value<'a>)>
-    where
-        Self: 'a;
+    where Self: 'a;
 
     /// Returns the number of fields within the document.
     fn len(&self) -> usize;
@@ -203,8 +201,6 @@ pub trait JsonVisitor<'a> {
     fn next_key_value(&mut self) -> Option<(&'a str, Self::ValueVisitor)>;
 }
 
-
-
 pub mod doc_binary_wrappers {
     use super::*;
 
@@ -215,9 +211,9 @@ pub mod doc_binary_wrappers {
         W: Write + ?Sized,
     {
         let stored_field_values = || {
-           document
-               .iter_fields_and_values()
-               .filter(|(field, _)| schema.get_field_entry(*field).is_stored())
+            document
+                .iter_fields_and_values()
+                .filter(|(field, _)| schema.get_field_entry(*field).is_stored())
         };
 
         let num_field_values = stored_field_values().count();
@@ -233,10 +229,7 @@ pub mod doc_binary_wrappers {
         Ok(())
     }
 
-    pub fn serialize<T, W>(
-        value: &T,
-        writer: &mut W
-    ) -> io::Result<()>
+    pub fn serialize<T, W>(value: &T, writer: &mut W) -> io::Result<()>
     where
         T: DocumentAccess,
         W: Write + ?Sized,
@@ -404,11 +397,7 @@ impl Document {
     }
 
     /// Add a JSON field
-    pub fn add_json_object(
-        &mut self,
-        field: Field,
-        json_object: Map<String, serde_json::Value>,
-    ) {
+    pub fn add_json_object(&mut self, field: Field, json_object: Map<String, serde_json::Value>) {
         self.add_field_value(field, json_object);
     }
 
@@ -622,8 +611,8 @@ impl<'a, T: JsonValueVisitor<'a>> serde::Serialize for SerializeJsonWrapper<'a, 
 
 #[cfg(test)]
 mod tests {
-    use crate::schema::*;
     use crate::schema::document::doc_binary_wrappers;
+    use crate::schema::*;
 
     #[test]
     fn test_doc() {

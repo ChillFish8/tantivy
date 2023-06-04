@@ -1,8 +1,8 @@
 use std::io;
 use std::io::{Read, Write};
-use crate::serialize::BinaryDeserializable;
 
 use super::BinarySerializable;
+use crate::serialize::BinaryDeserializable;
 
 /// Variable int serializes a u128 number
 pub fn serialize_vint_u128(mut val: u128, output: &mut Vec<u8>) {

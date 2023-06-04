@@ -2,7 +2,9 @@ use std::io::Write;
 use std::sync::Arc;
 use std::{io, iter};
 
-use common::{BinaryDeserializable, BinarySerializable, CountingWriter, DeserializeFrom, OwnedBytes};
+use common::{
+    BinaryDeserializable, BinarySerializable, CountingWriter, DeserializeFrom, OwnedBytes,
+};
 use fastdivide::DividerU64;
 use tantivy_bitpacker::{compute_num_bits, BitPacker, BitUnpacker};
 

@@ -2,8 +2,8 @@ use super::Scorer;
 use crate::core::SegmentReader;
 use crate::docset::BUFFER_LEN;
 use crate::query::Explanation;
-use crate::{DocId, DocSet, Document, Score, TERMINATED};
 use crate::schema::DocumentAccess;
+use crate::{DocId, DocSet, Document, Score, TERMINATED};
 
 /// Iterates through all of the documents and scores matched by the DocSet
 /// `DocSet`.

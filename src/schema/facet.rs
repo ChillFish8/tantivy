@@ -198,7 +198,9 @@ impl BinarySerializable for Facet {
 
 impl BinaryDeserializable for Facet {
     fn deserialize<R: Read>(reader: &mut R) -> io::Result<Self> {
-        Ok(Facet(<String as BinaryDeserializable>::deserialize(reader)?))
+        Ok(Facet(<String as BinaryDeserializable>::deserialize(
+            reader,
+        )?))
     }
 }
 

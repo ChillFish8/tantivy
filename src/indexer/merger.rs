@@ -17,10 +17,13 @@ use crate::fieldnorm::{FieldNormReader, FieldNormReaders, FieldNormsSerializer, 
 use crate::indexer::doc_id_mapping::{MappingType, SegmentDocIdMapping};
 use crate::indexer::SegmentSerializer;
 use crate::postings::{InvertedIndexSerializer, Postings, SegmentPostings};
-use crate::schema::{value_type_to_column_type, Field, FieldType, Schema, DocumentAccess};
+use crate::schema::{value_type_to_column_type, DocumentAccess, Field, FieldType, Schema};
 use crate::store::StoreWriter;
 use crate::termdict::{TermMerger, TermOrdinal};
-use crate::{DocAddress, DocId, Document, IndexSettings, IndexSortByField, InvertedIndexReader, Order, SegmentComponent, SegmentOrdinal};
+use crate::{
+    DocAddress, DocId, Document, IndexSettings, IndexSortByField, InvertedIndexReader, Order,
+    SegmentComponent, SegmentOrdinal,
+};
 
 /// Segment's max doc must be `< MAX_DOC_LIMIT`.
 ///
@@ -69,7 +72,10 @@ fn estimate_total_num_tokens_in_single_segment<D: DocumentAccess>(
     Ok((segment_num_tokens as f64 * ratio) as u64)
 }
 
-fn estimate_total_num_tokens<D: DocumentAccess>(readers: &[SegmentReader<D>], field: Field) -> crate::Result<u64> {
+fn estimate_total_num_tokens<D: DocumentAccess>(
+    readers: &[SegmentReader<D>],
+    field: Field,
+) -> crate::Result<u64> {
     let mut total_num_tokens: u64 = 0;
     for reader in readers {
         total_num_tokens += estimate_total_num_tokens_in_single_segment(reader, field)?;
@@ -872,10 +878,7 @@ mod tests {
             }
             {
                 let doc = searcher.doc(DocAddress::new(0, 2))?;
-                assert_eq!(
-                    doc.get_first(text_field).unwrap().as_str(),
-                    Some("a b c d")
-                );
+                assert_eq!(doc.get_first(text_field).unwrap().as_str(), Some("a b c d"));
             }
             {
                 let doc = searcher.doc(DocAddress::new(0, 3))?;
@@ -883,10 +886,7 @@ mod tests {
             }
             {
                 let doc = searcher.doc(DocAddress::new(0, 4))?;
-                assert_eq!(
-                    doc.get_first(text_field).unwrap().as_str(),
-                    Some("a b c g")
-                );
+                assert_eq!(doc.get_first(text_field).unwrap().as_str(), Some("a b c g"));
             }
 
             {

@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+
 use super::term_scorer::TermScorer;
 use crate::core::SegmentReader;
 use crate::docset::{DocSet, BUFFER_LEN};
@@ -16,7 +17,7 @@ pub struct TermWeight<D: DocumentAccess = Document> {
     index_record_option: IndexRecordOption,
     similarity_weight: Bm25Weight,
     scoring_enabled: bool,
-    _phantom: PhantomData<D>
+    _phantom: PhantomData<D>,
 }
 
 impl<D: DocumentAccess> Weight<D> for TermWeight<D> {
@@ -105,7 +106,7 @@ impl<D: DocumentAccess> TermWeight<D> {
             index_record_option,
             similarity_weight,
             scoring_enabled,
-            _phantom: PhantomData
+            _phantom: PhantomData,
         }
     }
 

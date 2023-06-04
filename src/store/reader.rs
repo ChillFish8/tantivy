@@ -15,7 +15,7 @@ use super::Decompressor;
 use crate::directory::FileSlice;
 use crate::error::DataCorruption;
 use crate::fastfield::AliveBitSet;
-use crate::schema::{Document, document, DocumentAccess};
+use crate::schema::{document, Document, DocumentAccess};
 use crate::space_usage::StoreSpaceUsage;
 use crate::store::index::Checkpoint;
 use crate::DocId;
@@ -115,8 +115,7 @@ impl Sum for CacheStats {
 }
 
 impl<D> StoreReader<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     /// Opens a store reader
     ///
@@ -385,7 +384,7 @@ mod tests {
 
     use super::*;
     use crate::directory::RamDirectory;
-    use crate::schema::{Document, DocValue, Field};
+    use crate::schema::{DocValue, Document, Field};
     use crate::store::tests::write_lorem_ipsum_store;
     use crate::store::Compressor;
     use crate::Directory;

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::{Arc, RwLock};
 use std::{fmt, io};
-use std::marker::PhantomData;
 
 use fail::fail_point;
 
@@ -49,8 +49,7 @@ pub struct SegmentReader<D = Document> {
 }
 
 impl<D> SegmentReader<D>
-where
-    D: DocumentAccess
+where D: DocumentAccess
 {
     /// Returns the highest document id ever attributed in
     /// this segment + 1.

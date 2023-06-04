@@ -1,6 +1,6 @@
 use super::IndexWriter;
-use crate::{Document, FutureResult, Opstamp};
 use crate::schema::DocumentAccess;
+use crate::{Document, FutureResult, Opstamp};
 
 /// A prepared commit
 pub struct PreparedCommit<'a, D: DocumentAccess = Document> {

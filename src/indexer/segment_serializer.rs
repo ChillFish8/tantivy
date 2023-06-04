@@ -2,11 +2,11 @@ use common::TerminatingWrite;
 
 use crate::core::{Segment, SegmentComponent};
 use crate::directory::WritePtr;
-use crate::Document;
 use crate::fieldnorm::FieldNormsSerializer;
 use crate::postings::InvertedIndexSerializer;
 use crate::schema::DocumentAccess;
 use crate::store::StoreWriter;
+use crate::Document;
 
 /// Segment serializer is in charge of laying out on disk
 /// the data accumulated and sorted by the `SegmentWriter`.
@@ -20,10 +20,7 @@ pub struct SegmentSerializer<D: DocumentAccess = Document> {
 
 impl<D: DocumentAccess> SegmentSerializer<D> {
     /// Creates a new `SegmentSerializer`.
-    pub fn for_segment(
-        mut segment: Segment<D>,
-        is_in_merge: bool,
-    ) -> crate::Result<Self> {
+    pub fn for_segment(mut segment: Segment<D>, is_in_merge: bool) -> crate::Result<Self> {
         // If the segment is going to be sorted, we stream the docs first to a temporary file.
         // In the merge case this is not necessary because we can kmerge the already sorted
         // segments

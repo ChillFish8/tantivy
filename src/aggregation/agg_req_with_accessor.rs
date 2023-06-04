@@ -1,8 +1,8 @@
 //! This will enhance the request tree with access to the fastfield and metadata.
 
 use std::marker::PhantomData;
+
 use columnar::{Column, ColumnBlockAccessor, ColumnType, StrColumn};
-use crate::schema::DocumentAccess;
 
 use super::agg_limits::ResourceLimitGuard;
 use super::agg_req::{Aggregation, AggregationVariants, Aggregations};
@@ -15,6 +15,7 @@ use super::metric::{
 };
 use super::segment_agg_result::AggregationLimits;
 use super::VecWithNames;
+use crate::schema::DocumentAccess;
 use crate::{Document, SegmentReader};
 
 #[derive(Default)]
@@ -144,7 +145,7 @@ pub(crate) fn get_aggs_with_segment_accessor_and_validate<D>(
     limits: &AggregationLimits,
 ) -> crate::Result<AggregationsWithAccessor<D>>
 where
-    D: DocumentAccess
+    D: DocumentAccess,
 {
     let mut aggss = Vec::new();
     for (key, agg) in aggs.iter() {

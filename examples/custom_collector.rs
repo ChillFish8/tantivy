@@ -12,7 +12,7 @@ use columnar::Column;
 // Importing tantivy...
 use tantivy::collector::{Collector, SegmentCollector};
 use tantivy::query::QueryParser;
-use tantivy::schema::{Schema, FAST, INDEXED, TEXT, DocumentAccess};
+use tantivy::schema::{DocumentAccess, Schema, FAST, INDEXED, TEXT};
 use tantivy::{doc, Index, Score, SegmentReader};
 
 #[derive(Default)]
