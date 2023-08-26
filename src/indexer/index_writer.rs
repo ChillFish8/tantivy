@@ -577,7 +577,6 @@ impl<D: DocumentAccess> IndexWriter<D> {
             self.num_threads,
             self.memory_arena_in_bytes_per_thread,
             directory_lock,
-            #[cfg(feature = "thread-affinity")]
             self.worker_thread_affinity.clone(),
         )?;
 
