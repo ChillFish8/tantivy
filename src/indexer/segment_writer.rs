@@ -148,6 +148,7 @@ impl SegmentWriter {
         Ok(doc_opstamps)
     }
 
+    /// The memory usage for the given segment.
     pub fn mem_usage(&self) -> usize {
         self.ctx.mem_usage()
             + self.fieldnorms_writer.mem_usage()
