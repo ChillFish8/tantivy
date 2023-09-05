@@ -184,7 +184,7 @@ pub use crate::core::{
     SegmentReader, SingleSegmentIndexWriter,
 };
 pub use crate::directory::Directory;
-pub use crate::indexer::operation::UserOperation;
+pub use crate::indexer::operation::{UserOperation, AddOperation};
 pub use crate::indexer::segment_writer::SegmentWriter;
 pub use crate::indexer::{merge_filtered_segments, merge_indices, IndexWriter, PreparedCommit};
 pub use crate::postings::Postings;
