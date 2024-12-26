@@ -104,7 +104,7 @@ impl Searcher {
     }
 
     /// Fetches a document in an asynchronous manner.
-    #[cfg(feature = "quickwit")]
+    #[cfg(feature = "async")]
     pub async fn doc_async<D: DocumentDeserialize>(
         &self,
         doc_address: DocAddress,
@@ -142,7 +142,7 @@ impl Searcher {
 
     /// Return the overall number of documents containing
     /// the given term in an asynchronous manner.
-    #[cfg(feature = "quickwit")]
+    #[cfg(feature = "async")]
     pub async fn doc_freq_async(&self, term: &Term) -> crate::Result<u64> {
         let mut total_doc_freq = 0;
         for segment_reader in &self.inner.segment_readers {

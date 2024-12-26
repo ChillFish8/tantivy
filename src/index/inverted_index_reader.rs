@@ -213,12 +213,24 @@ impl InvertedIndexReader {
     }
 }
 
-#[cfg(feature = "quickwit")]
+#[cfg(feature = "async")]
 impl InvertedIndexReader {
     pub(crate) async fn get_term_info_async(&self, term: &Term) -> io::Result<Option<TermInfo>> {
         self.termdict.get_async(term.serialized_value_bytes()).await
     }
 
+    /// Returns the number of documents containing the term asynchronously.
+    pub async fn doc_freq_async(&self, term: &Term) -> io::Result<u32> {
+        Ok(self
+            .get_term_info_async(term)
+            .await?
+            .map(|term_info| term_info.doc_freq)
+            .unwrap_or(0u32))
+    }
+}
+
+#[cfg(feature = "quickwit")]
+impl InvertedIndexReader {
     async fn get_term_range_async(
         &self,
         terms: impl std::ops::RangeBounds<Term>,
@@ -326,14 +338,5 @@ impl InvertedIndexReader {
             self.positions_file_slice.read_bytes_async().await?;
         }
         Ok(())
-    }
-
-    /// Returns the number of documents containing the term asynchronously.
-    pub async fn doc_freq_async(&self, term: &Term) -> io::Result<u32> {
-        Ok(self
-            .get_term_info_async(term)
-            .await?
-            .map(|term_info| term_info.doc_freq)
-            .unwrap_or(0u32))
     }
 }

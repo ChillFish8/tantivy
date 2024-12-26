@@ -19,7 +19,7 @@ use crate::schema::document::{BinaryDocumentDeserializer, DocumentDeserialize};
 use crate::space_usage::StoreSpaceUsage;
 use crate::store::index::Checkpoint;
 use crate::DocId;
-#[cfg(feature = "quickwit")]
+#[cfg(feature = "async")]
 use crate::Executor;
 
 pub(crate) const DOCSTORE_CACHE_CAPACITY: usize = 100;
@@ -374,7 +374,7 @@ fn block_read_index(block: &[u8], doc_pos: u32) -> crate::Result<Range<usize>> {
     Ok(start_offset..end_offset)
 }
 
-#[cfg(feature = "quickwit")]
+#[cfg(feature = "async")]
 impl StoreReader {
     /// Advanced API.
     ///
@@ -397,12 +397,16 @@ impl StoreReader {
             .read_bytes_async()
             .await?;
 
-        let decompressor = self.decompressor;
-        let maybe_decompressed_block = executor
-            .spawn_blocking(move || decompressor.decompress(compressed_block.as_ref()))
-            .await
-            .expect("decompression panicked");
-        let decompressed_block = OwnedBytes::new(maybe_decompressed_block?);
+        let decompressed_block = if matches!(self.decompressor, Decompressor::None) {
+            compressed_block // Already decompressed
+        } else {
+            let decompressor = self.decompressor;
+            executor
+                .spawn_blocking(move || decompressor.decompress(compressed_block.as_ref()))
+                .await
+                .expect("decompression panicked")
+                .map(OwnedBytes::new)?
+        };
 
         self.cache
             .put_into_cache(cache_key, decompressed_block.clone());

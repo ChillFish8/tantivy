@@ -200,6 +200,20 @@ impl TermDictionary {
             .map(|term_ord| self.term_info_from_ord(term_ord)))
     }
 
+    #[cfg(feature = "async")]
+    /// Lookups the value corresponding to the key asynchronously.
+    ///
+    /// WARNING: This method is currently _not_ truly asynchronous for the FST
+    /// dictionary type.
+    ///
+    /// TODO: Rework fst IO for this to be truly async... Or just accept it as
+    ///     being fine as synchronous.
+    pub async fn get_async<K: AsRef<[u8]>>(&self, key: K) -> io::Result<Option<TermInfo>> {
+        Ok(self
+            .term_ord(key)?
+            .map(|term_ord| self.term_info_from_ord(term_ord)))
+    }
+
     /// Returns a range builder, to stream all of the terms
     /// within an interval.
     pub fn range(&self) -> TermStreamerBuilder<'_> {

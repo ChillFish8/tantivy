@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-#[cfg(feature = "quickwit")]
+#[cfg(feature = "async")]
 use futures_util::{future::Either, FutureExt};
 
 use crate::TantivyError;
@@ -101,7 +101,7 @@ impl Executor {
     /// Spawn a task on the pool, returning a future completing on task success.
     ///
     /// If the task panics, returns `Err(())`.
-    #[cfg(feature = "quickwit")]
+    #[cfg(feature = "async")]
     pub fn spawn_blocking<T: Send + 'static>(
         &self,
         cpu_intensive_task: impl FnOnce() -> T + Send + 'static,
@@ -179,7 +179,7 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "quickwit")]
+    #[cfg(feature = "async")]
     #[test]
     fn test_cancel_cpu_intensive_tasks() {
         use std::sync::atomic::{AtomicU64, Ordering};
