@@ -356,12 +356,10 @@ impl<D: Document> IndexWriter<D> {
     }
 
     #[doc(hidden)]
-    pub fn add_segment(&self, segment_meta: SegmentMeta) -> crate::Result<()> {
+    pub fn add_segment(&self, segment_meta: SegmentMeta) -> FutureResult<()> {
         let delete_cursor = self.delete_queue.cursor();
         let segment_entry = SegmentEntry::new(segment_meta, delete_cursor, None);
-        self.segment_updater
-            .schedule_add_segment(segment_entry)
-            .wait()
+        self.segment_updater.schedule_add_segment(segment_entry)
     }
 
     /// Creates a new segment.
