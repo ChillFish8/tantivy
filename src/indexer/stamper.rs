@@ -72,10 +72,12 @@ use self::atomic_impl::AtomicU64Wrapper;
 pub struct Stamper(Arc<AtomicU64Wrapper>);
 
 impl Stamper {
+    /// Creates a new [Stamper] with an initial opstamp value.
     pub fn new(first_opstamp: Opstamp) -> Stamper {
         Stamper(Arc::new(AtomicU64Wrapper::new(first_opstamp)))
     }
 
+    /// Gets the next monotonic opstamp.
     pub fn stamp(&self) -> Opstamp {
         self.0.fetch_add(1u64, Ordering::SeqCst)
     }

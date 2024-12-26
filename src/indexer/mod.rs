@@ -43,6 +43,7 @@ pub(crate) use self::segment_serializer::SegmentSerializer;
 pub use self::segment_updater::{merge, merge_filtered_segments, merge_indices};
 pub use self::segment_writer::SegmentWriter;
 pub use self::single_segment_index_writer::SingleSegmentIndexWriter;
+pub use self::stamper::Stamper;
 
 /// Alias for the default merge policy, which is the `LogMergePolicy`.
 pub type DefaultMergePolicy = LogMergePolicy;
