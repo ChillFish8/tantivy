@@ -40,7 +40,7 @@ pub use self::operation::UserOperation;
 pub use self::prepared_commit::PreparedCommit;
 pub use self::segment_entry::SegmentEntry;
 pub(crate) use self::segment_serializer::SegmentSerializer;
-pub use self::segment_updater::{merge_filtered_segments, merge_indices};
+pub use self::segment_updater::{merge_filtered_segments, merge_indices, merge};
 pub use self::segment_writer::SegmentWriter;
 pub use self::single_segment_index_writer::SingleSegmentIndexWriter;
 

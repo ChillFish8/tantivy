@@ -81,9 +81,10 @@ fn garbage_collect_files(
         .garbage_collect(move || segment_updater.list_files())
 }
 
+#[doc(hidden)]
 /// Merges a list of segments the list of segment givens in the `segment_entries`.
 /// This function happens in the calling thread and is computationally expensive.
-fn merge(
+pub fn merge(
     index: &Index,
     mut segment_entries: Vec<SegmentEntry>,
     target_opstamp: Opstamp,
