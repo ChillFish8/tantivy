@@ -31,7 +31,7 @@ mod stamper;
 use crossbeam_channel as channel;
 use smallvec::SmallVec;
 
-pub use self::index_writer::IndexWriter;
+pub use self::index_writer::{IndexWriter, IndexWriterOptions};
 pub use self::log_merge_policy::LogMergePolicy;
 pub use self::merge_operation::MergeOperation;
 pub use self::merge_policy::{MergeCandidate, MergePolicy, NoMergePolicy};
@@ -40,7 +40,7 @@ pub use self::operation::UserOperation;
 pub use self::prepared_commit::PreparedCommit;
 pub use self::segment_entry::SegmentEntry;
 pub(crate) use self::segment_serializer::SegmentSerializer;
-pub use self::segment_updater::{merge_filtered_segments, merge_indices, merge};
+pub use self::segment_updater::{merge, merge_filtered_segments, merge_indices};
 pub use self::segment_writer::SegmentWriter;
 pub use self::single_segment_index_writer::SingleSegmentIndexWriter;
 
