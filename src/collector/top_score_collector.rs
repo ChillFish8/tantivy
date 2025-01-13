@@ -239,6 +239,18 @@ impl TopDocs {
         TopDocs(self.0.and_offset(offset))
     }
 
+    #[inline]
+    /// Returns the current limit of the collector.
+    pub fn limit(&self) -> usize {
+        self.0.limit
+    }
+
+    #[inline]
+    /// Returns the current offset of the collector.
+    pub fn offset(&self) -> usize {
+        self.0.offset
+    }
+
     /// Set top-K to rank documents by a given fast field.
     ///
     /// If the field is not a fast or does not exist, this method returns successfully (it is not
